@@ -1,18 +1,20 @@
 :root {
   /* Color */
-  --bg-base: #0A0D12;
-  --bg-radial-inner: #12161F;
-  --bg-radial-outer: #0A0D12;
-  --text-primary: rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-tertiary: rgba(255, 255, 255, 0.32);
-  --glass-base: rgba(255, 255, 255, 0.055);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-strong: rgba(255, 255, 255, 0.08);
+  --bg-base: #07090E;
+  --bg-radial-inner: #151A26;
+  --bg-radial-outer: #07090E;
+  --text-primary: rgba(255, 255, 255, 0.94);
+  --text-secondary: rgba(255, 255, 255, 0.58);
+  --text-tertiary: rgba(255, 255, 255, 0.34);
+  --glass-base: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-strong: rgba(255, 255, 255, 0.085);
   --accent-dynamic: #7C9CFF;
   --accent-dynamic-rgb: 124, 156, 255;
   --danger: #FF6B6B;
   --success: #4ADE80;
+  --shadow-deep: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-accent: 0 12px 36px rgba(var(--accent-dynamic-rgb), 0.22);
 
   /* Type */
   --font-ui: 'General Sans', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
@@ -51,11 +53,11 @@
   --duration-slow: 800ms;
 
   /* Glass intensities */
-  --blur-base: 28px;
-  --blur-player: 36px;
-  --blur-titlebar: 12px;
-  --saturate-base: 180%;
-  --saturate-player: 200%;
+  --blur-base: 32px;
+  --blur-player: 44px;
+  --blur-titlebar: 16px;
+  --saturate-base: 190%;
+  --saturate-player: 220%;
 }
 
 @media (prefers-reduced-motion: reduce) {

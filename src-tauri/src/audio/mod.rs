@@ -7,3 +7,6 @@ pub use engine::AudioEngine;
 
 #[cfg(test)]
 mod user_music_tests;
+
+#[cfg(test)]
+mod d_drive_tests;

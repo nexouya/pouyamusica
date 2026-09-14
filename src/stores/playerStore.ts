@@ -84,8 +84,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     try {
       const paths = useLibraryStore.getState().tracks.map((t) => t.path);
       if (paths.length) void api.setQueue(paths).catch(() => undefined);
+      // Backend waits for the audio worker to finish Load before Play.
       const meta = await api.playTrack(track.path);
-      // Un-mute if the engine is currently silent so playback is audible.
       if (get().volume <= 0) {
         void get().applyVolume(0.8);
       }
@@ -99,6 +99,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     } catch (e) {
       console.error("playTrack failed", e);
+      set({ playing: false });
       useLibraryStore.setState({ error: `Playback failed: ${e}` });
     }
   },
@@ -107,7 +108,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const waveform = await loadWaveform(track.path);
     set({
       current: track,
-      playing: true,
       position: 0,
       duration: track.duration_secs || 0,
       waveform,
@@ -115,11 +115,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   togglePlay: async () => {
-    const { current, playing } = get();
+    const { current } = get();
     if (!current) return;
     try {
       await api.togglePlay();
-      set({ playing: !playing });
+      // Trust the engine, not a local flip — progress events can race.
+      const status = await api.getPlaybackStatus().catch(() => null);
+      if (status) {
+        set({
+          playing: status.playing,
+          position: status.position_secs,
+          duration: status.duration_secs || get().duration,
+          volume: status.volume,
+        });
+      } else {
+        set({ playing: !get().playing });
+      }
     } catch (e) {
       console.error("togglePlay failed", e);
     }
@@ -140,17 +151,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       else nextIdx = idx + 1;
       if (nextIdx >= tracks.length) {
         if (repeat === "all") nextIdx = 0;
-        else return; // stop at end
+        else {
+          set({ playing: false });
+          return;
+        }
       }
     }
     await get().playTrack(tracks[nextIdx]);
   },
 
   prev: async () => {
-    const { current, shuffle } = get();
+    const { current, shuffle, position } = get();
     const tracks = useLibraryStore.getState().tracks;
-    if (!tracks.length) return;
-    const idx = tracks.findIndex((t) => t.id === current?.id);
+    if (!tracks.length || !current) return;
+    // Standard transport: >3s restarts current track; otherwise previous.
+    if (position > 3) {
+      await get().seek(0);
+      try {
+        await api.play();
+        set({ playing: true });
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    const idx = tracks.findIndex((t) => t.id === current.id);
     let prevIdx: number;
     if (shuffle && tracks.length > 1) {
       prevIdx = Math.floor(Math.random() * tracks.length);

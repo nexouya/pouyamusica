@@ -11,7 +11,11 @@ use super::shared::{FftFrame, SharedAudioState};
 
 /// Commands accepted by the dedicated audio thread.
 pub enum AudioCmd {
-    Load(PathBuf),
+    /// Load a file. `ack` receives Ok(()) or Err(msg) when the worker finishes.
+    Load {
+        path: PathBuf,
+        ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>,
+    },
     Play,
     Pause,
     Toggle,
@@ -198,17 +202,24 @@ impl AudioEngine {
                     };
 
                     let Some(core) = core.as_mut() else {
-                        if let AudioCmd::Volume(v) = cmd {
-                            *volume_thread.lock() = v.clamp(0.0, 1.0);
-                        }
-                        if matches!(cmd, AudioCmd::Shutdown) {
-                            break;
+                        match cmd {
+                            AudioCmd::Volume(v) => {
+                                *volume_thread.lock() = v.clamp(0.0, 1.0);
+                            }
+                            AudioCmd::Load { ack, .. } => {
+                                if let Some(ack) = ack {
+                                    let _ = ack.send(Err("audio device unavailable".into()));
+                                }
+                            }
+                            AudioCmd::Play | AudioCmd::Pause | AudioCmd::Toggle => {}
+                            AudioCmd::Shutdown => break,
+                            _ => {}
                         }
                         continue;
                     };
 
                     match cmd {
-                        AudioCmd::Load(path) => {
+                        AudioCmd::Load { path, ack } => {
                             core.path = Some(path.clone());
                             *path_thread.lock() = Some(path);
                             core.seek_offset = 0.0;
@@ -216,13 +227,17 @@ impl AudioEngine {
                             core.playing = false;
                             state_thread.clear();
                             state_thread.set_playing(false);
-                            if let Err(e) =
-                                core.rebuild_from_with_state(0.0, false, &state_thread)
-                            {
-                                eprintln!("load error: {e:#}");
-                            }
+                            let load_result = core
+                                .rebuild_from_with_state(0.0, false, &state_thread)
+                                .map_err(|e| e.to_string());
                             *position_thread.lock() = 0.0;
                             *playing_thread.lock() = false;
+                            if let Err(ref e) = load_result {
+                                eprintln!("load error: {e}");
+                            }
+                            if let Some(ack) = ack {
+                                let _ = ack.send(load_result);
+                            }
                         }
                         AudioCmd::Play => {
                             core.apply_play(&state_thread, &playing_thread);
@@ -301,7 +316,16 @@ impl AudioEngine {
             return Err(anyhow!("file not found: {}", p.display()));
         }
         *self.current_path.lock() = Some(p.clone());
-        self.send(AudioCmd::Load(p))
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
+        self.send(AudioCmd::Load {
+            path: p,
+            ack: Some(ack_tx),
+        })?;
+        match ack_rx.recv_timeout(std::time::Duration::from_secs(8)) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(msg)) => Err(anyhow!(msg)),
+            Err(_) => Err(anyhow!("timed out waiting for audio load")),
+        }
     }
 
     pub fn play(&self) -> Result<()> {
