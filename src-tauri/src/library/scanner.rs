@@ -150,6 +150,11 @@ pub fn scan_folder(dir: &Path) -> Result<Vec<TrackMeta>> {
         return Ok(tracks);
     }
     let mut stack = vec![dir.to_path_buf()];
+    let mut visited_dirs = std::collections::HashSet::new();
+    if let Ok(canonical) = dir.canonicalize() {
+        visited_dirs.insert(canonical);
+    }
+
     while let Some(d) = stack.pop() {
         let entries = match std::fs::read_dir(&d) {
             Ok(e) => e,
@@ -157,9 +162,23 @@ pub fn scan_folder(dir: &Path) -> Result<Vec<TrackMeta>> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if is_audio(&path) {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+
+            // Skip hidden directories and files (.git, .Trash, etc.)
+            if name_str.starts_with('.') {
+                continue;
+            }
+
+            let Ok(file_type) = entry.file_type() else { continue };
+
+            if file_type.is_dir() {
+                if let Ok(canonical) = path.canonicalize() {
+                    if visited_dirs.insert(canonical) {
+                        stack.push(path);
+                    }
+                }
+            } else if file_type.is_file() && is_audio(&path) {
                 if let Ok(t) = read_track(&path) {
                     tracks.push(t);
                 }
@@ -204,8 +223,7 @@ pub fn watch_folder(dir: PathBuf, on_change: impl Fn(PathBuf) + Send + 'static) 
 
 pub fn default_music_dir() -> PathBuf {
     dirs::audio_dir()
-        .or_else(dirs::home_dir)
-        .map(|p| p.join("Music"))
+        .or_else(|| dirs::home_dir().map(|p| p.join("Music")))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 

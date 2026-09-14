@@ -142,6 +142,7 @@ pub fn run() {
             commands::remove_track_from_playlist,
             commands::reorder_playlist,
             commands::move_playlist_track,
+            commands::get_playlist,
         ])
         .run(tauri::generate_context!())
     {

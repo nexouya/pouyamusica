@@ -149,6 +149,7 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
         return;
       }
       try {
+        set({ webPath: true, lastEngageError: null });
         bindHandlers();
         // Pause + mute native BEFORE starting web so no unprocessed blip
         await api.pause();
@@ -163,7 +164,6 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
           lab.orbitPeriod,
           autoplay,
         );
-        set({ webPath: true, lastEngageError: null });
         usePlayerStore.setState({
           playing: autoplay,
           duration: webDuration() || player.duration,

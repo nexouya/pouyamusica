@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-ROOT = Path(r"C:\Users\NexAdmin\Downloads\New folder\pouya-music-source")
+ROOT = Path(__file__).resolve().parent.parent
 SS = 4
 MASTER = 1024
 

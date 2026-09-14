@@ -47,6 +47,8 @@ pub fn save_settings(settings: &AppSettings) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(settings)?;
-    std::fs::write(&path, json)?;
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, json)?;
+    std::fs::rename(&tmp_path, &path)?;
     Ok(())
 }

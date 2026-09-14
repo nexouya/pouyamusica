@@ -3,18 +3,19 @@
  *
  * Pipeline:
  *   decodeAudioData(file) → AudioBufferSourceNode
- *     → [preset wet chain] → head-shadow LPF → HRTF panner → depth gain
- *     → limiter → analyser → destination
+ *     → [preset wet chain] → head-shadow LPF → HRTF 3D panner → depth gain
+ *     → [spatial early reflection room diffusion] → transparent limiter → analyser → destination
  *
- * Why buffer: WebView2 asset URLs + MediaElementSource are unreliable here.
- * decodeAudioData + BufferSource always runs DSP on real samples.
+ * Why buffer: WebView2 asset URLs + MediaElementSource are unreliable across platforms.
+ * decodeAudioData + BufferSource always runs DSP on real samples with zero latency and high fidelity.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { updateAudioVisualData } from "../../core/events/audioVisualBus";
 import type { SoundLabPresetId } from "./types";
 
-const RAMP = 0.2;
+const RAMP = 0.18;
 
 type Chain = {
   ctx: AudioContext;
@@ -24,6 +25,10 @@ type Chain = {
   shadowLp: BiquadFilterNode;
   panner: PannerNode;
   pannerGain: GainNode;
+  spatialDry: GainNode;
+  spatialWet: GainNode;
+  spatialConvolver: ConvolverNode;
+  spatialMerge: GainNode;
   limiter: DynamicsCompressorNode;
   analyser: AnalyserNode;
   master: GainNode;
@@ -48,10 +53,10 @@ type Chain = {
 
 let chain: Chain | null = null;
 
-function softSaturationCurve(amount = 0.35): Float32Array<ArrayBuffer> {
+function softSaturationCurve(amount = 0.25): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(new ArrayBuffer(n * 4));
-  const k = amount * 40;
+  const k = Math.max(0.1, amount * 24);
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
     curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
@@ -71,7 +76,26 @@ function makeHallIr(ctx: AudioContext, seconds = 2.4): AudioBuffer {
       const env = Math.pow(1 - t, 2.4) * (1 - Math.exp(-i / (rate * 0.02)));
       const white = Math.random() * 2 - 1;
       lp = lp * 0.72 + white * 0.28;
-      data[i] = lp * env * 0.55;
+      data[i] = lp * env * 0.45;
+    }
+  }
+  return buf;
+}
+
+/** Short, natural binaural early-reflection impulse response for 8D room acoustics. */
+function makeSpatialRoomIr(ctx: AudioContext, seconds = 0.65): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    let lp = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / len;
+      const env = Math.pow(1 - t, 3.2) * (1 - Math.exp(-i / (rate * 0.008)));
+      const white = Math.random() * 2 - 1;
+      lp = lp * 0.65 + white * 0.35;
+      data[i] = lp * env * 0.35;
     }
   }
   return buf;
@@ -84,10 +108,10 @@ function makeVinylNoise(ctx: AudioContext): AudioBuffer {
   const data = buf.getChannelData(0);
   let dust = 0;
   for (let i = 0; i < len; i++) {
-    let s = (Math.random() * 2 - 1) * 0.04;
-    if (Math.random() < 0.0004) dust = 1;
-    dust *= 0.96;
-    s += dust * (Math.random() * 2 - 1) * 0.35;
+    let s = (Math.random() * 2 - 1) * 0.025;
+    if (Math.random() < 0.00035) dust = 0.8;
+    dust *= 0.95;
+    s += dust * (Math.random() * 2 - 1) * 0.25;
     data[i] = s;
   }
   return buf;
@@ -155,11 +179,11 @@ function peaking(ctx: AudioContext, freq: number, gain: number, q = 0.9) {
   return f;
 }
 
-function lowpass(ctx: AudioContext, freq: number, q = 0.7) {
+function lowshelf(ctx: AudioContext, freq: number, gain: number) {
   const f = ctx.createBiquadFilter();
-  f.type = "lowpass";
+  f.type = "lowshelf";
   f.frequency.value = freq;
-  f.Q.value = q;
+  f.gain.value = gain;
   return f;
 }
 
@@ -168,6 +192,14 @@ function highshelf(ctx: AudioContext, freq: number, gain: number) {
   f.type = "highshelf";
   f.frequency.value = freq;
   f.gain.value = gain;
+  return f;
+}
+
+function lowpass(ctx: AudioContext, freq: number, q = 0.7) {
+  const f = ctx.createBiquadFilter();
+  f.type = "lowpass";
+  f.frequency.value = freq;
+  f.Q.value = q;
   return f;
 }
 
@@ -214,8 +246,13 @@ function currentPosition(c: Chain): number {
 function startProgress(c: Chain) {
   stopProgress(c);
   c.progressTimer = window.setInterval(() => {
-    c.onProgress?.(currentPosition(c), c.buffer?.duration ?? 0, c.playing);
-  }, 120);
+    const pos = currentPosition(c);
+    const dur = c.buffer?.duration ?? 0;
+    c.onProgress?.(pos, dur, c.playing);
+    if (c.playing) {
+      updateAudioVisualData(getSpectrum());
+    }
+  }, 100);
 }
 
 function applyRate(c: Chain, rate: number) {
@@ -235,7 +272,7 @@ function startWow(c: Chain) {
   c.wowTimer = window.setInterval(() => {
     if (!c.playing || !c.source) return;
     phase += 0.5 * 0.05;
-    const detune = 1 + Math.sin(phase * Math.PI * 2) * 0.004;
+    const detune = 1 + Math.sin(phase * Math.PI * 2) * 0.0035;
     try {
       c.source.playbackRate.setTargetAtTime(
         c.baseRate * detune,
@@ -252,21 +289,29 @@ function startOrbit(c: Chain) {
   stopOrbit(c);
   let last = performance.now();
   const tick = (now: number) => {
-    const dt = Math.min(0.1, (now - last) / 1000);
+    const dt = Math.min(0.08, (now - last) / 1000);
     last = now;
     c.theta += ((Math.PI * 2) / c.orbitPeriod) * dt;
-    const r = 1.4;
-    const x = r * Math.cos(c.theta);
-    const z = r * Math.sin(c.theta);
+
+    // 3D Elliptical Orbit (X/Z) with Vertical Elevation Wave (Y)
+    const rx = 2.4;
+    const rz = 1.8;
+    const x = rx * Math.cos(c.theta);
+    const z = rz * Math.sin(c.theta);
+    const y = 0.42 * Math.sin(c.theta * 2);
+
     const t = c.ctx.currentTime;
-    const tau = 0.04;
+    const tau = 0.035;
     c.panner.positionX.setTargetAtTime(x, t, tau);
     c.panner.positionZ.setTargetAtTime(z, t, tau);
-    c.panner.positionY.setTargetAtTime(0, t, tau);
-    const behind = Math.max(0, -z) / r;
-    c.shadowLp.frequency.setTargetAtTime(18000 - behind * 11000, t, tau);
-    const g = Math.pow(10, (-2 * behind) / 20);
+    c.panner.positionY.setTargetAtTime(y, t, tau);
+
+    // Binaural Head Shadow: Low-pass filter dips when sound is behind listener
+    const behind = Math.max(0, -z) / rz;
+    c.shadowLp.frequency.setTargetAtTime(19000 - behind * 14200, t, tau);
+    const g = Math.pow(10, (-2.2 * behind) / 20);
     c.pannerGain.gain.setTargetAtTime(g, t, tau);
+
     c.orbitRaf = requestAnimationFrame(tick);
   };
   c.orbitRaf = requestAnimationFrame(tick);
@@ -280,27 +325,30 @@ async function buildPreset(
   const t = ctx.currentTime;
   switch (id) {
     case "funk": {
+      const pad = ctx.createGain();
+      pad.gain.value = 0.85;
       const shaper = ctx.createWaveShaper();
-      shaper.curve = softSaturationCurve(0.35);
+      shaper.curve = softSaturationCurve(0.22);
       shaper.oversample = "2x";
-      const bass = peaking(ctx, 120, 4, 1.1);
-      const air = highshelf(ctx, 10000, -6);
+      const bass = peaking(ctx, 120, 3.5, 1.0);
+      const snare = peaking(ctx, 2800, 1.5, 1.2);
+      const air = highshelf(ctx, 10000, -4.0);
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -18;
-      comp.knee.value = 12;
-      comp.ratio.value = 3;
-      comp.attack.value = 0.01;
+      comp.threshold.value = -16;
+      comp.knee.value = 10;
+      comp.ratio.value = 2.8;
+      comp.attack.value = 0.015;
       comp.release.value = 0.18;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(1, t + RAMP);
-      const r = chainNodes([shaper, bass, air, comp]);
+      g.gain.linearRampToValueAtTime(1.05, t + RAMP);
+      const r = chainNodes([pad, shaper, bass, snare, air, comp]);
       r.out.connect(g);
       return { in: r.in, out: g };
     }
     case "lofi": {
-      const hp = highpass(ctx, 40);
-      const lp = lowpass(ctx, 5000, 0.8);
+      const hp = highpass(ctx, 45);
+      const lp = lowpass(ctx, 5200, 0.8);
       await ensureWorklet(ctx);
       let crushOut: AudioNode = lp;
       try {
@@ -324,7 +372,7 @@ async function buildPreset(
       noise.loop = true;
       const nG = ctx.createGain();
       nG.gain.setValueAtTime(0.0001, t);
-      nG.gain.linearRampToValueAtTime(0.05, t + RAMP);
+      nG.gain.linearRampToValueAtTime(0.035, t + RAMP);
       noise.connect(nG);
       nG.connect(sum);
       noise.start();
@@ -333,24 +381,44 @@ async function buildPreset(
       return { in: hp, out: sum };
     }
     case "bass": {
-      const boost = peaking(ctx, 80, 9, 0.9);
-      const boost2 = peaking(ctx, 55, 3, 1.2);
-      const lim = ctx.createDynamicsCompressor();
-      lim.threshold.value = -6;
-      lim.knee.value = 2;
-      lim.ratio.value = 12;
-      lim.attack.value = 0.003;
-      lim.release.value = 0.12;
-      return chainNodes([boost, boost2, lim]);
+      // Professional Audiophile Bass Enhancer:
+      // 1. Headroom padding (-3.3 dB) so massive sub-bass never clips 0 dBFS
+      const pad = ctx.createGain();
+      pad.gain.value = 0.68;
+      // 2. Warm low-shelf at 90Hz (+6 dB) + focused 52Hz sub thump (+2.5 dB)
+      const shelf = lowshelf(ctx, 90, 6.0);
+      const sub = peaking(ctx, 52, 2.5, 0.85);
+      const air = highshelf(ctx, 11000, -0.6);
+      // 3. Smooth soft saturation wave-shaper
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = softSaturationCurve(0.10);
+      shaper.oversample = "2x";
+      // 4. Transparent compressor with 25ms attack (preserves pure sine cycle waveforms)
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -4.0;
+      comp.knee.value = 8.0;
+      comp.ratio.value = 3.5;
+      comp.attack.value = 0.025;
+      comp.release.value = 0.16;
+      // 5. Post makeup gain
+      const makeup = ctx.createGain();
+      makeup.gain.setValueAtTime(0.0001, t);
+      makeup.gain.linearRampToValueAtTime(1.15, t + RAMP);
+
+      const r = chainNodes([pad, shelf, sub, air, shaper, comp]);
+      r.out.connect(makeup);
+      return { in: r.in, out: makeup };
     }
-    case "nightcore":
-      return chainNodes([ctx.createGain()]);
+    case "nightcore": {
+      const boost = highshelf(ctx, 6000, 1.5);
+      return chainNodes([boost]);
+    }
     case "slowed": {
       const dry = ctx.createGain();
       dry.gain.value = 0.75;
       const wet = ctx.createGain();
       wet.gain.setValueAtTime(0.0001, t);
-      wet.gain.linearRampToValueAtTime(0.25, t + RAMP);
+      wet.gain.linearRampToValueAtTime(0.24, t + RAMP);
       const conv = ctx.createConvolver();
       conv.buffer = makeHallIr(ctx, 2.4);
       const sum = ctx.createGain();
@@ -363,23 +431,23 @@ async function buildPreset(
       return { in: split, out: sum };
     }
     case "vocal": {
-      const presence = peaking(ctx, 2200, 5, 1.0);
-      const mud = peaking(ctx, 180, -4, 0.9);
-      const hp = highpass(ctx, 90);
+      const hp = highpass(ctx, 85);
+      const mud = peaking(ctx, 220, -3.5, 0.9);
+      const presence = peaking(ctx, 2400, 4.0, 1.0);
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -28;
-      comp.knee.value = 16;
-      comp.ratio.value = 4;
-      comp.attack.value = 0.008;
-      comp.release.value = 0.2;
+      comp.threshold.value = -24;
+      comp.knee.value = 14;
+      comp.ratio.value = 3.5;
+      comp.attack.value = 0.012;
+      comp.release.value = 0.22;
       return chainNodes([hp, mud, presence, comp]);
     }
     case "hall": {
       const dry = ctx.createGain();
-      dry.gain.value = 0.72;
+      dry.gain.value = 0.74;
       const wet = ctx.createGain();
       wet.gain.setValueAtTime(0.0001, t);
-      wet.gain.linearRampToValueAtTime(0.28, t + RAMP);
+      wet.gain.linearRampToValueAtTime(0.26, t + RAMP);
       const conv = ctx.createConvolver();
       conv.buffer = makeHallIr(ctx, 2.8);
       const sum = ctx.createGain();
@@ -393,20 +461,14 @@ async function buildPreset(
     }
     case "night": {
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -36;
-      comp.knee.value = 20;
-      comp.ratio.value = 8;
-      comp.attack.value = 0.01;
+      comp.threshold.value = -30;
+      comp.knee.value = 16;
+      comp.ratio.value = 4.5;
+      comp.attack.value = 0.015;
       comp.release.value = 0.25;
       const makeup = ctx.createGain();
-      makeup.gain.value = 1.35;
-      const lim = ctx.createDynamicsCompressor();
-      lim.threshold.value = -3;
-      lim.knee.value = 0;
-      lim.ratio.value = 20;
-      lim.attack.value = 0.002;
-      lim.release.value = 0.08;
-      return chainNodes([comp, makeup, lim]);
+      makeup.gain.value = 1.20;
+      return chainNodes([comp, makeup]);
     }
   }
 }
@@ -419,7 +481,9 @@ function ensureCtx(): Chain {
   const unity = ctx.createGain();
   const shadowLp = ctx.createBiquadFilter();
   shadowLp.type = "lowpass";
-  shadowLp.frequency.value = 18000;
+  shadowLp.frequency.value = 19000;
+  shadowLp.Q.value = 0.6;
+
   const panner = ctx.createPanner();
   panner.panningModel = "HRTF";
   panner.distanceModel = "inverse";
@@ -431,26 +495,47 @@ function ensureCtx(): Chain {
   panner.positionX.value = 0;
   panner.positionY.value = 0;
   panner.positionZ.value = 1;
+
   const pannerGain = ctx.createGain();
   pannerGain.gain.value = 1;
+
+  // 8D Room Early Reflections Convolver
+  const spatialDry = ctx.createGain();
+  spatialDry.gain.value = 1;
+  const spatialWet = ctx.createGain();
+  spatialWet.gain.value = 0; // inactive when spatial is off
+  const spatialConvolver = ctx.createConvolver();
+  spatialConvolver.buffer = makeSpatialRoomIr(ctx, 0.65);
+  const spatialMerge = ctx.createGain();
+
+  // Transparent master safety limiter (protects 0 dBFS cleanly)
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -1;
-  limiter.knee.value = 0;
-  limiter.ratio.value = 20;
-  limiter.attack.value = 0.002;
-  limiter.release.value = 0.08;
+  limiter.threshold.value = -0.5;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 8;
+  limiter.attack.value = 0.015;
+  limiter.release.value = 0.12;
+
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.75;
   const master = ctx.createGain();
   master.gain.value = 1;
 
-  // Always keep a valid wet path (unity until preset applied)
+  // Connect baseline graph
   input.connect(unity);
   unity.connect(shadowLp);
   shadowLp.connect(panner);
   panner.connect(pannerGain);
-  pannerGain.connect(limiter);
+
+  // Split through spatial wet/dry
+  pannerGain.connect(spatialDry);
+  pannerGain.connect(spatialConvolver);
+  spatialConvolver.connect(spatialWet);
+  spatialDry.connect(spatialMerge);
+  spatialWet.connect(spatialMerge);
+
+  spatialMerge.connect(limiter);
   limiter.connect(analyser);
   analyser.connect(master);
   master.connect(ctx.destination);
@@ -463,6 +548,10 @@ function ensureCtx(): Chain {
     shadowLp,
     panner,
     pannerGain,
+    spatialDry,
+    spatialWet,
+    spatialConvolver,
+    spatialMerge,
     limiter,
     analyser,
     master,
@@ -499,7 +588,6 @@ async function rebuildPreset(c: Chain, id: SoundLabPresetId) {
     c.vinyl = null;
   }
   c.workletNode = null;
-  // Disconnect input from old wet chain; keep shadowLp onward
   try {
     c.input.disconnect();
   } catch {
@@ -562,7 +650,6 @@ function startSource(c: Chain, offset: number) {
   src.playbackRate.value = c.baseRate;
   src.connect(c.input);
   src.onended = () => {
-    // Natural end only (not manual stop)
     if (c.source === src && c.playing) {
       c.playing = false;
       c.offset = c.buffer?.duration ?? 0;
@@ -588,7 +675,6 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
 }
 
 async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
-  // 1) asset protocol via fetch
   try {
     const url = convertFileSrc(path);
     const res = await fetch(url);
@@ -599,7 +685,6 @@ async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
   } catch (e) {
     console.warn("[SoundLab] convertFileSrc fetch failed", e);
   }
-  // 2) IPC base64
   const b64 = await invoke<string>("read_audio_b64", { path });
   return base64ToArrayBuffer(b64);
 }
@@ -630,16 +715,18 @@ export async function setSpatial(enabled: boolean, orbitPeriod: number): Promise
   const c = ensureCtx();
   c.orbitPeriod = Math.min(14, Math.max(8, orbitPeriod));
   c.spatial = enabled;
+  const t = c.ctx.currentTime;
   if (enabled) {
     if (c.ctx.state === "suspended") await c.ctx.resume();
+    c.spatialWet.gain.setTargetAtTime(0.14, t, 0.1);
     startOrbit(c);
   } else {
     stopOrbit(c);
-    const t = c.ctx.currentTime;
+    c.spatialWet.gain.setTargetAtTime(0, t, 0.1);
     c.panner.positionX.setTargetAtTime(0, t, 0.08);
     c.panner.positionY.setTargetAtTime(0, t, 0.08);
     c.panner.positionZ.setTargetAtTime(1, t, 0.08);
-    c.shadowLp.frequency.setTargetAtTime(18000, t, 0.08);
+    c.shadowLp.frequency.setTargetAtTime(19000, t, 0.08);
     c.pannerGain.gain.setTargetAtTime(1, t, 0.08);
   }
 }

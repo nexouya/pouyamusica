@@ -61,10 +61,17 @@ impl SharedAudioState {
         if len == 0 {
             return vec![0.0; n];
         }
-        let start = len.saturating_sub(n);
         let mut out = vec![0.0; n];
-        for (i, s) in samples.iter().skip(start).enumerate() {
-            out[i] = *s;
+        if len >= n {
+            let start = len - n;
+            for (i, s) in samples.iter().skip(start).enumerate() {
+                out[i] = *s;
+            }
+        } else {
+            let offset = n - len;
+            for (i, s) in samples.iter().enumerate() {
+                out[offset + i] = *s;
+            }
         }
         out
     }

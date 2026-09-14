@@ -40,8 +40,17 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.getAttribute("role") === "slider" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      // Never intercept browser/system shortcuts with Ctrl/Alt/Meta (e.g. Ctrl+Q, Ctrl+R, Ctrl+F, Ctrl+W)
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
       const st = usePlayerStore.getState();
 
       if (e.code === "Space") {
@@ -78,6 +87,7 @@ export default function App() {
         e.preventDefault();
         void st.toggleLikeCurrent();
       } else if (e.code === "Escape" && st.focusMode) {
+        e.preventDefault();
         st.toggleFocus();
       }
     };

@@ -43,7 +43,10 @@ pub fn save_playlists(list: &[Playlist]) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&path, serde_json::to_string_pretty(list)?)?;
+    let json = serde_json::to_string_pretty(list)?;
+    let tmp_path = path.with_extension("tmp");
+    std::fs::write(&tmp_path, json)?;
+    std::fs::rename(&tmp_path, &path)?;
     Ok(())
 }
 

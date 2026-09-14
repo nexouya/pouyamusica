@@ -1,4 +1,5 @@
 #[test]
+#[cfg(windows)]
 fn loads_d_drive_track() {
     let path = std::path::PathBuf::from(r"D:\a");
     let mut found = None;

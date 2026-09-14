@@ -4,7 +4,8 @@ import struct
 import wave
 from pathlib import Path
 
-out = Path(os.environ["USERPROFILE"]) / "Music" / "pouya-music"
+music_dir = Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or ".").expanduser() / "Music"
+out = music_dir / "pouya-music"
 out.mkdir(parents=True, exist_ok=True)
 
 

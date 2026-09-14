@@ -15,6 +15,7 @@ export function Visualizer({ mode = "radial", size = 280, className, innerRadius
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playing = usePlayerStore((s) => s.playing);
   const accentRgb = useUiStore((s) => s.accentRgb);
+  const liteMode = useUiStore((s) => s.liteMode);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -22,15 +23,23 @@ export function Visualizer({ mode = "radial", size = 280, className, innerRadius
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, liteMode ? 1 : 2);
     canvas.width = size * dpr;
     canvas.height = (mode === "radial" ? size : 64) * dpr;
     ctx.scale(dpr, dpr);
 
     const display = new Float32Array(32);
     let raf = 0;
+    let lastDraw = 0;
 
-    const draw = () => {
+    const draw = (now: number) => {
+      // In Lite Mode, throttle to ~30 fps to reduce CPU/GPU cycles
+      if (liteMode && now - lastDraw < 33) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      lastDraw = now;
+
       const w = size;
       const h = mode === "radial" ? size : 64;
       ctx.clearRect(0, 0, w, h);
@@ -50,14 +59,16 @@ export function Visualizer({ mode = "radial", size = 280, className, innerRadius
         const baseR = innerRadius;
         const maxLen = (size / 2 - baseR - 8) * 0.92;
 
-        // soft glow ring
-        const grd = ctx.createRadialGradient(cx, cy, baseR * 0.7, cx, cy, baseR + maxLen);
-        grd.addColorStop(0, `rgba(${r},${g},${b},0.08)`);
-        grd.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = grd;
-        ctx.beginPath();
-        ctx.arc(cx, cy, baseR + maxLen, 0, Math.PI * 2);
-        ctx.fill();
+        // In standard mode, render soft glow ring; in Lite Mode, skip expensive radial gradient
+        if (!liteMode) {
+          const grd = ctx.createRadialGradient(cx, cy, baseR * 0.7, cx, cy, baseR + maxLen);
+          grd.addColorStop(0, `rgba(${r},${g},${b},0.08)`);
+          grd.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(cx, cy, baseR + maxLen, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
         for (let i = 0; i < 32; i++) {
           const v = Math.max(0.06, display[i]);
@@ -67,7 +78,7 @@ export function Visualizer({ mode = "radial", size = 280, className, innerRadius
           const y1 = cy + Math.sin(angle) * baseR;
           const x2 = cx + Math.cos(angle) * (baseR + len);
           const y2 = cy + Math.sin(angle) * (baseR + len);
-          const alpha = 0.25 + v * 0.75;
+          const alpha = liteMode ? 0.8 : 0.25 + v * 0.75;
           ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
           ctx.lineWidth = 3;
           ctx.lineCap = "round";
@@ -102,9 +113,9 @@ export function Visualizer({ mode = "radial", size = 280, className, innerRadius
       raf = requestAnimationFrame(draw);
     };
 
-    draw();
+    draw(performance.now());
     return () => cancelAnimationFrame(raf);
-  }, [mode, size, innerRadius, accentRgb, playing]);
+  }, [mode, size, innerRadius, accentRgb, playing, liteMode]);
 
   return (
     <canvas

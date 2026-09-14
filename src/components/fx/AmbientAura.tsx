@@ -7,10 +7,12 @@ import { subscribeAudioVisual } from "../../core/events/audioVisualBus";
 /** Soft breathing orbs tinted by the live accent — react smoothly to FFT energy. */
 export function AmbientAura() {
   const accentRgb = useUiStore((s) => s.accentRgb);
+  const liteMode = useUiStore((s) => s.liteMode);
   const playing = usePlayerStore((s) => s.playing);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (liteMode) return;
     const el = rootRef.current;
     if (!el) return;
 
@@ -29,7 +31,11 @@ export function AmbientAura() {
     });
 
     return () => unsub();
-  }, [playing]);
+  }, [playing, liteMode]);
+
+  if (liteMode) {
+    return null;
+  }
 
   return (
     <div

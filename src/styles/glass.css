@@ -113,3 +113,36 @@
     transition: none;
   }
 }
+
+/* Lite Mode overrides — completely eliminate backdrop-filter raster overhead */
+[data-lite-mode="true"] .glass::before,
+.lite-mode .glass::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: var(--glass-base);
+}
+
+[data-lite-mode="true"] .glass::after,
+.lite-mode .glass::after {
+  display: none !important;
+}
+
+[data-lite-mode="true"] .glassHighlight,
+.lite-mode .glassHighlight {
+  display: none !important;
+}
+
+[data-lite-mode="true"] .glassPlayer,
+.lite-mode .glassPlayer {
+  background: rgba(14, 18, 28, 0.96) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-lite-mode="true"] .glassTitlebar,
+.lite-mode .glassTitlebar {
+  background: rgba(10, 13, 20, 0.98) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

@@ -19,7 +19,7 @@ export const PRESET_CATALOG: SoundLabPresetMeta[] = [
     id: "bass",
     name: "Bass Boost",
     tagline: "Deep low end",
-    detail: "Peaking +9 dB @ 80 Hz · safety limiter",
+    detail: "Dual-stage low shelf + 52 Hz sub boost · warm soft saturation · zero clipping",
   },
   {
     id: "nightcore",

@@ -26,8 +26,8 @@
   --shadow-accent: 0 12px 36px rgba(var(--accent-dynamic-rgb), 0.22);
 
   /* Type */
-  --font-ui: 'General Sans', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, monospace;
+  --font-ui: 'General Sans', 'Inter', 'Noto Sans', 'Cantarell', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', 'DejaVu Sans Mono', 'Cascadia Code', Consolas, monospace;
 
   --text-page-title: 28px;
   --text-track: 18px;
@@ -61,12 +61,25 @@
   --duration-med: 320ms;
   --duration-slow: 800ms;
 
-  /* Glass intensities */
-  --blur-base: 32px;
-  --blur-player: 44px;
-  --blur-titlebar: 16px;
-  --saturate-base: 190%;
-  --saturate-player: 220%;
+  /* Glass intensities — tuned for Linux WebKitGTK smoothness */
+  --blur-base: 18px;
+  --blur-player: 22px;
+  --blur-titlebar: 12px;
+  --saturate-base: 140%;
+  --saturate-player: 150%;
+}
+
+/* Low Performance / Lite Mode tokens */
+[data-lite-mode="true"],
+.lite-mode {
+  --blur-base: 0px;
+  --blur-player: 0px;
+  --blur-titlebar: 0px;
+  --saturate-base: 100%;
+  --saturate-player: 100%;
+  --glass-base: rgba(14, 18, 28, 0.94);
+  --surface-deep: rgba(10, 13, 20, 0.96);
+  --surface-elevated: rgba(20, 26, 38, 0.98);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -232,7 +232,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       try {
         const lab = await soundLabWeb();
         if (lab.useSoundLabStore.getState().webPath) {
-          await (await import("./soundLabStore")).webTogglePlay();
+          const { playWeb } = await import("../audio/soundLab/webSource");
+          await playWeb();
         } else {
           await api.play();
         }

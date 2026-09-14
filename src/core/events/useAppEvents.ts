@@ -6,6 +6,8 @@ import { useLibraryStore } from "../../stores/libraryStore";
 import { api } from "../api";
 import { updateAudioVisualData } from "./audioVisualBus";
 
+import { useSoundLabStore } from "../../stores/soundLabStore";
+
 /**
  * Single place that maps Tauri events → store updates.
  * Features can add listeners via `subscribeAppEvent` below.
@@ -44,6 +46,9 @@ export function useAppEvents() {
 
     unsubs.push(
       listen<FftFrame>("fft-data", (e) => {
+        if (useSoundLabStore.getState().webPath) {
+          return;
+        }
         if (e.payload?.bands) {
           updateAudioVisualData(e.payload.bands, e.payload.rms);
         }
@@ -55,6 +60,10 @@ export function useAppEvents() {
       listen<PlaybackProgress>("playback-progress", (e) => {
         const p = e.payload;
         if (!p) return;
+        // If SoundLab (Web Audio) owns playback, ignore native engine progress to prevent flickering
+        if (useSoundLabStore.getState().webPath) {
+          return;
+        }
         const st = usePlayerStore.getState();
         st.setPosition(p.position_secs);
         if (p.duration_secs > 0) st.setDuration(p.duration_secs);
@@ -66,6 +75,10 @@ export function useAppEvents() {
 
     unsubs.push(
       listen("playback-ended", (e) => {
+        // If SoundLab is active, SoundLab's onEnded handler handles track progression
+        if (useSoundLabStore.getState().webPath) {
+          return;
+        }
         const st = usePlayerStore.getState();
         if (st.repeat === "one") {
           void st.seek(0).then(() => api.play()).then(() => st.setPlaying(true));

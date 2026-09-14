@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 #[test]
 fn decodes_user_music_wavs() {
-    let dir = PathBuf::from(std::env::var("USERPROFILE").unwrap_or_default())
+    let dir = dirs::audio_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
         .join("Music")
         .join("pouya-music");
     if !dir.is_dir() {

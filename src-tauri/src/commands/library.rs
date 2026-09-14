@@ -95,14 +95,12 @@ pub fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Option<
         let _ = tx.send(folder);
     });
     let folder = rx.recv().map_err(|e| e.to_string())?;
-    if let Some(path) = folder {
-        // Dialog may yield a path or a file URL — normalize to a filesystem path.
-        let raw = path.to_string();
-        let path_str = if let Some(rest) = raw.strip_prefix("file:///") {
-            rest.replace('/', "\\")
-        } else {
-            raw
-        };
+    if let Some(folder_path) = folder {
+        let path_buf = folder_path.into_path().unwrap_or_else(|fp| {
+            let s = fp.to_string();
+            std::path::PathBuf::from(s.strip_prefix("file://").unwrap_or(&s))
+        });
+        let path_str = path_buf.to_string_lossy().to_string();
         let tracks = set_music_root(app, state, path_str)?;
         Ok(Some(tracks))
     } else {
