@@ -28,7 +28,13 @@ pub fn settings_path() -> PathBuf {
 pub fn load_settings() -> AppSettings {
     let path = settings_path();
     if let Ok(raw) = std::fs::read_to_string(&path) {
-        if let Ok(s) = serde_json::from_str::<AppSettings>(&raw) {
+        if let Ok(mut s) = serde_json::from_str::<AppSettings>(&raw) {
+            // A stored volume of exactly 0 is almost always an accidental mute
+            // (or a failed engine init that never restored volume). Restore
+            // an audible default so "it doesn't play" isn't just silence.
+            if s.volume <= 0.0 {
+                s.volume = default_volume();
+            }
             return s;
         }
     }

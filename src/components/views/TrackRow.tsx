@@ -99,11 +99,20 @@ export function TrackRow({
   );
 }
 
-export function EmptyState({ title, hint }: { title: string; hint: string }) {
+export function EmptyState({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint: string;
+  action?: ReactNode;
+}) {
   return (
     <GlassPanel className={styles.empty} radius={20}>
       <h2 className={styles.emptyTitle}>{title}</h2>
       <p className={styles.emptyHint}>{hint}</p>
+      {action}
     </GlassPanel>
   );
 }

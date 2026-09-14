@@ -10,7 +10,6 @@ export function ExploreView() {
   const tracks = useLibraryStore((s) => s.tracks);
   const refresh = useLibraryStore((s) => s.refresh);
   const root = useLibraryStore((s) => s.root);
-  const setRoot = useLibraryStore((s) => s.setRoot);
   const [loadingFolder, setLoadingFolder] = useState(false);
 
   const handlePickFolder = async () => {
@@ -18,26 +17,13 @@ export function ExploreView() {
     try {
       const result = await api.pickFolder();
       if (result) {
-        useLibraryStore.setState({ tracks: result, loading: false });
+        useLibraryStore.setState({ tracks: result, loading: false, error: null });
         const newRoot = await api.getMusicRoot().catch(() => "");
         if (newRoot) useLibraryStore.setState({ root: newRoot });
       }
     } catch (e) {
       console.error("pickFolder failed", e);
-    } finally {
-      setLoadingFolder(false);
-    }
-  };
-
-  const handleLoadDemo = async () => {
-    setLoadingFolder(true);
-    try {
-      const demo = await api.findDemoLibrary();
-      if (demo) {
-        await setRoot(demo);
-      }
-    } catch (e) {
-      console.error("loadDemo failed", e);
+      useLibraryStore.setState({ error: String(e) });
     } finally {
       setLoadingFolder(false);
     }
@@ -82,13 +68,6 @@ export function ExploreView() {
             >
               🔄 Rescan
             </button>
-            <button
-              type="button"
-              className={styles.actionBtn}
-              onClick={() => void handleLoadDemo()}
-            >
-              ⚡ Demo Library
-            </button>
           </div>
         </div>
 
@@ -132,7 +111,7 @@ export function ExploreView() {
           {tracks.length === 0 ? (
             <EmptyState
               title="No music found in directory"
-              hint="Click 'Choose Folder' above to point Pouya Music at your MP3, FLAC, WAV, or AAC collection."
+              hint="Click 'Choose Folder' above and select a folder that contains your audio files (MP3, FLAC, WAV, M4A, OGG…)."
             />
           ) : (
             <div className={styles.list}>

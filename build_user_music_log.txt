@@ -1,0 +1,54 @@
+
+> pouya-music@0.1.0 tauri:build
+> tauri build
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> pouya-music@0.1.0 build
+> tsc && vite build
+
+[36mvite v8.3.0 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 476 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                                     0.45 kB │ gzip:   0.29 kB
+dist/assets/jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2    7.50 kB
+dist/assets/jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2         9.00 kB
+dist/assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2     12.10 kB
+dist/assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2    15.19 kB
+dist/assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2        40.40 kB
+dist/assets/index-DOsfA-zs.css                                     59.39 kB │ gzip:  13.88 kB
+dist/assets/index-B7n3dIUw.js                                     436.03 kB │ gzip: 132.45 kB
+
+[32m✓ built in 507ms[39m
+   Compiling pouya-music v0.1.0 (C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri)
+warning: function `get_playlist` is never used
+  --> src\commands\playlists.rs:67:8
+   |
+67 | pub fn get_playlist(id: String) -> Option<Playlist> {
+   |        ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_playlist` is never used
+   --> src\library\playlists.rs:159:8
+    |
+159 | pub fn get_playlist(id: &str) -> Option<Playlist> {
+    |        ^^^^^^^^^^^^
+
+warning: `pouya-music` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 1m 54s
+       Built application at: C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\pouya-music.exe
+        Info Patching C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\pouya-music.exe with bundle type information: msi
+        Info Target: x64
+     Running candle for "C:\\Users\\NexAdmin\\Downloads\\New folder\\pouya-music-source\\src-tauri\\target\\release\\wix\\x64\\main.wxs"
+     Running light to produce C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\bundle\msi\pouya music_0.1.0_x64_en-US.msi
+        Info Patching C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\pouya-music.exe with bundle type information: nsis
+        Info Target: x64
+     Running makensis to produce C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\bundle\nsis\pouya music_0.1.0_x64-setup.exe
+    Finished 2 bundles at:
+        C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\bundle\msi\pouya music_0.1.0_x64_en-US.msi
+        C:\Users\NexAdmin\Downloads\New folder\pouya-music-source\src-tauri\target\release\bundle\nsis\pouya music_0.1.0_x64-setup.exe
+

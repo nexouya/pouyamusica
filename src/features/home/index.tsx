@@ -6,6 +6,7 @@ import { usePlayerStore } from "../../stores/playerStore";
 import { EmptyState, TrackRow } from "../../components/views/TrackRow";
 import { IconHeart, IconPause, IconPlay } from "../../components/icons/Icons";
 import { formatTime } from "../../lib/format";
+import { api } from "../../core/api";
 
 export function HomeView() {
   const tracks = useLibraryStore((s) => s.tracks);
@@ -37,7 +38,26 @@ export function HomeView() {
     return (
       <EmptyState
         title="Your library is empty"
-        hint="Drop audio files into your Music folder, or point pouya music at a folder from Explore."
+        hint="Choose a folder with your music (MP3, FLAC, WAV, M4A…). Nothing is bundled — you point the app at your files."
+        action={
+          <button
+            type="button"
+            className={styles.heroPlay}
+            style={{ marginTop: 16, width: "auto", padding: "0 18px", borderRadius: 999 }}
+            onClick={() => {
+              void api.pickFolder().then((result) => {
+                if (result) {
+                  useLibraryStore.setState({ tracks: result, error: null });
+                  void api.getMusicRoot().then((root) => {
+                    if (root) useLibraryStore.setState({ root });
+                  });
+                }
+              });
+            }}
+          >
+            Choose music folder
+          </button>
+        }
       />
     );
   }

@@ -132,7 +132,6 @@ pub fn run() {
             commands::get_liked,
             commands::refresh_track,
             commands::palette_from_image,
-            commands::find_demo_library,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,

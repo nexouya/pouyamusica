@@ -97,7 +97,10 @@ export function useAppEvents() {
 
     unsubs.push(
       listen<{ message: string }>("engine-error", (e) => {
-        if (e.payload?.message) console.error("[engine]", e.payload.message);
+        if (e.payload?.message) {
+          console.error("[engine]", e.payload.message);
+          useLibraryStore.setState({ error: e.payload.message });
+        }
         fanout("engine-error", e.payload);
       }),
     );

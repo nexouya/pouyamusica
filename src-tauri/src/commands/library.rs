@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::library::color_extract::{extract_palette, hex_to_rgb, pick_accent};
-use crate::library::scanner::{default_music_dir, read_track, scan_folder, TrackMeta};
+use crate::library::scanner::{read_track, scan_folder, TrackMeta};
 
 use super::AppState;
 
@@ -87,45 +87,25 @@ pub fn palette_from_image(path: String) -> Result<ColorPalette, String> {
 }
 
 #[tauri::command]
-pub fn find_demo_library() -> Option<String> {
-    let cwd = std::env::current_dir().ok()?;
-    let mut candidates = vec![
-        cwd.join("demo-library"),
-        cwd.join("..").join("demo-library"),
-        cwd.join("..").join("..").join("demo-library"),
-        cwd.join("..").join("..").join("..").join("demo-library"),
-    ];
-    if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join("Music").join("pouya-demo"));
-    }
-    for c in candidates {
-        if c.is_dir() {
-            return Some(c.canonicalize().ok()?.to_string_lossy().to_string());
-        }
-    }
-    None
-}
-
-#[tauri::command]
 pub fn pick_folder(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Vec<TrackMeta>>, String> {
-    use tauri_plugin_dialog::DialogExt;
     use std::sync::mpsc::channel;
+    use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = channel();
     app.dialog().file().pick_folder(move |folder| {
         let _ = tx.send(folder);
     });
     let folder = rx.recv().map_err(|e| e.to_string())?;
     if let Some(path) = folder {
-        let path_str = path.to_string();
+        // Dialog may yield a path or a file URL — normalize to a filesystem path.
+        let raw = path.to_string();
+        let path_str = if let Some(rest) = raw.strip_prefix("file:///") {
+            rest.replace('/', "\\")
+        } else {
+            raw
+        };
         let tracks = set_music_root(app, state, path_str)?;
         Ok(Some(tracks))
     } else {
         Ok(None)
     }
-}
-
-// Silence unused default_music_dir if not referenced here in future edits
-#[allow(unused)]
-fn _default() -> std::path::PathBuf {
-    default_music_dir()
 }

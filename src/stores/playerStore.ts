@@ -82,20 +82,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   playTrack: async (track) => {
     try {
-      // Keep backend queue in sync with library order for IPC consumers.
       const paths = useLibraryStore.getState().tracks.map((t) => t.path);
       if (paths.length) void api.setQueue(paths).catch(() => undefined);
-      await api.playTrack(track.path);
+      const meta = await api.playTrack(track.path);
+      // Un-mute if the engine is currently silent so playback is audible.
+      if (get().volume <= 0) {
+        void get().applyVolume(0.8);
+      }
       const waveform = await loadWaveform(track.path);
       set({
-        current: track,
+        current: meta || track,
         playing: true,
         position: 0,
-        duration: track.duration_secs || 0,
+        duration: (meta || track).duration_secs || 0,
         waveform,
       });
     } catch (e) {
       console.error("playTrack failed", e);
+      useLibraryStore.setState({ error: `Playback failed: ${e}` });
     }
   },
 

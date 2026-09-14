@@ -8,7 +8,6 @@ export const api = {
   scanLibrary: () => invoke<TrackMeta[]>("scan_library"),
   setMusicRoot: (path: string) => invoke<TrackMeta[]>("set_music_root", { path }),
   getMusicRoot: () => invoke<string>("get_music_root"),
-  findDemoLibrary: () => invoke<string | null>("find_demo_library"),
   refreshTrack: (path: string) => invoke<TrackMeta | null>("refresh_track", { path }),
   pickFolder: () => invoke<TrackMeta[] | null>("pick_folder"),
 

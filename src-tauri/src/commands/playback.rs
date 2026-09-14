@@ -93,12 +93,31 @@ pub fn get_waveform(state: State<'_, AppState>, path: String) -> Result<Vec<f32>
 
 #[tauri::command]
 pub fn play_track(
+    app: AppHandle,
     state: State<'_, AppState>,
     path: String,
 ) -> Result<crate::library::TrackMeta, String> {
-    let meta = read_track(std::path::Path::new(&path)).map_err(|e| e.to_string())?;
-    state.engine.load_track(&path).map_err(|e| e.to_string())?;
-    state.engine.play().map_err(|e| e.to_string())?;
+    let path_ref = std::path::Path::new(&path);
+    if !path_ref.exists() {
+        let msg = format!("file not found: {path}");
+        let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
+        return Err(msg);
+    }
+    let meta = read_track(path_ref).map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
+        msg
+    })?;
+    state.engine.load_track(&path).map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
+        msg
+    })?;
+    state.engine.play().map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
+        msg
+    })?;
     let idx = state.library.lock().iter().position(|t| t.path == path);
     *state.current_index.lock() = idx;
     state.persist();

@@ -35,17 +35,11 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   init: async () => {
     set({ loading: true });
     try {
-      // Prefer persisted root; fall back to demo-library only when empty/invalid.
-      let root = await api.getMusicRoot().catch(() => "");
+      // No demo fallback — user picks a folder (or default Music is scanned).
+      const root = await api.getMusicRoot().catch(() => "");
       let tracks = await api.getLibrary().catch(() => [] as TrackMeta[]);
-      if (!root || !tracks.length) {
-        const demo = await api.findDemoLibrary();
-        if (demo) {
-          tracks = await api.setMusicRoot(demo);
-          root = demo;
-        } else if (!tracks.length) {
-          tracks = await api.scanLibrary();
-        }
+      if (!tracks.length) {
+        tracks = await api.scanLibrary().catch(() => [] as TrackMeta[]);
       }
       set({ tracks, root, loading: false });
     } catch (e) {
