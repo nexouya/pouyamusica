@@ -39,3 +39,8 @@ startup_log.txt
 build_log*.txt
 standalone_test.png
 
+build_user_music_log.txt
+vite_test_*.txt
+standalone-build/
+*.exe
+
