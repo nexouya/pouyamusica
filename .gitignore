@@ -36,3 +36,6 @@ src-tauri/target/
 .worktrees/
 startup_log.txt
 
+build_log*.txt
+standalone_test.png
+
