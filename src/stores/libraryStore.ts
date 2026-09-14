@@ -9,6 +9,7 @@ type LibraryState = {
   error: string | null;
   query: string;
   setQuery: (q: string) => void;
+  clearError: () => void;
   refresh: () => Promise<void>;
   init: () => Promise<void>;
   setRoot: (path: string) => Promise<void>;
@@ -21,6 +22,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   error: null,
   query: "",
   setQuery: (q) => set({ query: q }),
+  clearError: () => set({ error: null }),
 
   refresh: async () => {
     set({ loading: true, error: null });

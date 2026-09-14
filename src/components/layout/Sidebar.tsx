@@ -38,13 +38,9 @@ export function Sidebar() {
         animate={{ opacity: 1, x: 0 }}
         transition={{ type: "spring", stiffness: 280, damping: 24, delay: 0.05 }}
       >
-        <motion.span
-          animate={{ rotate: [0, 8, -6, 0] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-          className={styles.logoSpin}
-        >
+        <span className={styles.logoSpin}>
           <IconLogo size={28} />
-        </motion.span>
+        </span>
         <div className={styles.brandText}>
           <div className={styles.brandName}>pouya music</div>
           <div className={styles.brandSub}>liquid glass player</div>

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import styles from "./App.module.css";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -14,14 +14,14 @@ import { useAccentSync } from "./hooks/useTauriEvents";
 import { useLibraryStore } from "./stores/libraryStore";
 import { usePlayerStore } from "./stores/playerStore";
 import { useUiStore } from "./stores/uiStore";
-// Side-effect: registers all product features
+import { ErrorBanner } from "./components/layout/ErrorBanner";
 import "./features";
 
 const viewSpring = {
-  initial: { opacity: 0, y: 16, filter: "blur(6px)" },
-  animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, y: -10, filter: "blur(4px)" },
-  transition: { type: "spring" as const, stiffness: 320, damping: 28, mass: 0.7 },
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -6 },
+  transition: { type: "spring" as const, stiffness: 360, damping: 32, mass: 0.65 },
 };
 
 export default function App() {
@@ -86,32 +86,37 @@ export default function App() {
   }, []);
 
   return (
-    <div className={styles.app}>
-      <SquircleDefs />
-      <AmbientAura />
-      <TitleBar />
-      <div className={styles.body}>
-        <div className={styles.contentRow}>
-          <Sidebar />
-          <main className={styles.main}>
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={view}
-                className={styles.viewHost}
-                initial={viewSpring.initial}
-                animate={viewSpring.animate}
-                exit={viewSpring.exit}
-                transition={viewSpring.transition}
-              >
-                {Feature ? <Feature /> : null}
-              </motion.div>
-            </AnimatePresence>
-          </main>
-          <QueuePanel />
+    <MotionConfig reducedMotion="user">
+      <div className={styles.app}>
+        <SquircleDefs />
+        <AmbientAura />
+        <TitleBar />
+        <div className={styles.body}>
+          <div className={styles.contentRow}>
+            <Sidebar />
+            <main className={styles.main}>
+              <ErrorBanner />
+              <div className={styles.mainScroll}>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={view}
+                    className={styles.viewHost}
+                    initial={viewSpring.initial}
+                    animate={viewSpring.animate}
+                    exit={viewSpring.exit}
+                    transition={viewSpring.transition}
+                  >
+                    {Feature ? <Feature /> : null}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </main>
+            <QueuePanel />
+          </div>
+          <NowPlayingBar />
+          <FocusMode />
         </div>
-        <NowPlayingBar />
-        <FocusMode />
       </div>
-    </div>
+    </MotionConfig>
   );
 }

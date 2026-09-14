@@ -11,7 +11,6 @@ import { api } from "../../core/api";
 export function HomeView() {
   const tracks = useLibraryStore((s) => s.tracks);
   const loading = useLibraryStore((s) => s.loading);
-  const error = useLibraryStore((s) => s.error);
   const current = usePlayerStore((s) => s.current);
   const playing = usePlayerStore((s) => s.playing);
   const playTrack = usePlayerStore((s) => s.playTrack);
@@ -42,8 +41,7 @@ export function HomeView() {
         action={
           <button
             type="button"
-            className={styles.heroPlay}
-            style={{ marginTop: 16, width: "auto", padding: "0 18px", borderRadius: 999 }}
+            className={styles.playAllBtn}
             onClick={() => {
               void api.pickFolder().then((result) => {
                 if (result) {
@@ -67,8 +65,6 @@ export function HomeView() {
 
   return (
     <div className={styles.view}>
-      {error && <p className={styles.error}>{error}</p>}
-
       {hero && (
         <section
           className={styles.hero}

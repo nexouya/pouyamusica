@@ -37,9 +37,19 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.mainScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .viewHost {
   height: 100%;
-  will-change: transform, opacity, filter;
+  min-height: 0;
+  will-change: opacity, transform;
 }
