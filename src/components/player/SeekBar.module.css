@@ -1,0 +1,209 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.wrapCompact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 480px;
+  user-select: none;
+}
+
+.time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.timeSm {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  min-width: 32px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.track {
+  position: relative;
+  flex: 1;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 8px;
+  min-width: 0;
+  touch-action: none;
+}
+
+.trackCompact {
+  position: relative;
+  flex: 1;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  min-width: 0;
+  touch-action: none;
+}
+
+.wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: 22px;
+  padding: 0 1px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 2px;
+  max-height: 22px;
+  border-radius: 999px;
+  opacity: 0.95;
+  transform-origin: center;
+  transition: background 60ms linear;
+}
+
+.waveMini {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.barMini {
+  flex: 1;
+  min-width: 1px;
+  max-height: 14px;
+  border-radius: 999px;
+}
+
+.rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 999px;
+  transform-origin: left center;
+  transform: scaleX(0);
+  box-shadow: 0 0 10px rgba(var(--accent-dynamic-rgb), 0.5);
+  pointer-events: none;
+}
+
+.trackCompact::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.knob {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 0 2px rgba(var(--accent-dynamic-rgb), 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+  pointer-events: none;
+}
+
+.trackCompact:hover .knob,
+.scrubbing .knob {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.hoverLine {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+.hoverTooltip {
+  position: absolute;
+  top: -24px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: rgba(14, 18, 26, 0.92);
+  color: #fff;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.track:hover .bar {
+  filter: brightness(1.15);
+}
+
+.playhead {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 0 3px rgba(var(--accent-dynamic-rgb), 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+  pointer-events: none;
+}
+
+.track:hover .playhead,
+.scrubbing .playhead {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.track:focus-visible,
+.trackCompact:focus-visible {
+  outline: 2px solid rgba(var(--accent-dynamic-rgb), 0.7);
+  outline-offset: 2px;
+}

@@ -1,0 +1,206 @@
+/* Full-width bottom transport bar — matches app chrome (no floating capsule) */
+.bar {
+  flex-shrink: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: rgba(14, 16, 22, 0.92);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  position: relative;
+  z-index: 40;
+}
+
+/* — left — */
+.left {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.artBtn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  padding: 0;
+  border: none;
+}
+
+.art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.artEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-dynamic-rgb), 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+}
+
+.meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.heart {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  padding: 6px;
+  display: inline-flex;
+  border-radius: 6px;
+  background: none;
+  border: none;
+}
+
+.heart:hover {
+  color: var(--text-primary);
+}
+
+.heartOn {
+  color: var(--danger);
+}
+
+/* — center — */
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+}
+
+.ctrl {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.ctrlSm {
+  width: 24px;
+  height: 24px;
+}
+
+.ctrl:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ctrlActive {
+  color: rgba(var(--accent-dynamic-rgb), 1);
+}
+
+.play {
+  width: 32px;
+  height: 32px;
+  margin: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  padding: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.play:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.play:focus-visible,
+.ctrl:focus-visible,
+.heart:focus-visible {
+  outline: 2px solid rgba(var(--accent-dynamic-rgb), 0.7);
+  outline-offset: 2px;
+}
+
+/* — right — */
+.right {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+@media (max-width: 1100px) {
+  .left {
+    width: 180px;
+  }
+  .right {
+    width: 100px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .left {
+    width: 140px;
+  }
+  .right > :nth-child(n + 2) {
+    display: none;
+  }
+  .right {
+    width: 72px;
+  }
+}

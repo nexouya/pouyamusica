@@ -1,0 +1,115 @@
+.aura {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  contain: strict;
+  transform: scale(var(--aura-scale, 1));
+  opacity: var(--aura-opacity, 0.35);
+  transform-origin: center center;
+  transition:
+    opacity 350ms ease,
+    transform 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(50px);
+  will-change: transform;
+}
+
+.orbA {
+  width: 48vw;
+  height: 48vw;
+  max-width: 520px;
+  max-height: 520px;
+  top: -10%;
+  left: 14%;
+  background: radial-gradient(
+    circle,
+    rgba(var(--accent-dynamic-rgb), 0.32) 0%,
+    transparent 68%
+  );
+  animation: driftA 22s ease-in-out infinite alternate;
+}
+
+.orbB {
+  width: 36vw;
+  height: 36vw;
+  max-width: 420px;
+  max-height: 420px;
+  bottom: 6%;
+  right: 5%;
+  background: radial-gradient(
+    circle,
+    rgba(var(--accent-dynamic-rgb), 0.22) 0%,
+    transparent 68%
+  );
+  animation: driftB 26s ease-in-out infinite alternate;
+}
+
+.orbC {
+  width: 28vw;
+  height: 28vw;
+  max-width: 320px;
+  max-height: 320px;
+  top: 36%;
+  left: 38%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.05) 0%,
+    transparent 68%
+  );
+  animation: driftC 18s ease-in-out infinite alternate;
+}
+
+/* Subtle Film Grain */
+.grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  pointer-events: none;
+}
+
+@keyframes driftA {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(4%, 5%, 0);
+  }
+}
+
+@keyframes driftB {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-5%, -4%, 0);
+  }
+}
+
+@keyframes driftC {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(3%, -4%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aura {
+    transition: none;
+    transform: none !important;
+  }
+  .orb {
+    animation: none !important;
+  }
+}
