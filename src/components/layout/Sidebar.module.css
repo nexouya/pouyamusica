@@ -154,6 +154,19 @@
   min-height: 0;
 }
 
+.playlistScrollCapped {
+  flex: 0 1 auto;
+  max-height: 140px;
+  margin-bottom: 12px;
+}
+
+.thumbIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
 .playlistItem {
   display: flex;
   align-items: center;

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import styles from "./Views.module.css";
 import { GlassButton } from "../glass/GlassPanel";
-import { IconPlay } from "../icons/Icons";
+import { IconMusic, IconPlay } from "../icons/Icons";
 import type { TrackMeta } from "../../types";
 import { usePlayerStore } from "../../stores/playerStore";
 import { formatTime } from "../../lib/format";
@@ -35,7 +35,9 @@ export function AlbumCard({
             draggable={false}
           />
         ) : (
-          <div className={styles.coverFallback}>♪</div>
+          <div className={styles.coverFallback} aria-hidden>
+            <IconMusic size={featured ? 36 : 28} />
+          </div>
         )}
         <div className={styles.coverShade} />
         <div className={styles.playOverlay}>

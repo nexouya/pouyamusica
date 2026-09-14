@@ -4,7 +4,7 @@ import styles from "../../components/views/Home.module.css";
 import { useLibraryStore } from "../../stores/libraryStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { EmptyState, TrackRow } from "../../components/views/TrackRow";
-import { IconHeart, IconPause, IconPlay } from "../../components/icons/Icons";
+import { IconHeart, IconMusic, IconPause, IconPlay } from "../../components/icons/Icons";
 import { formatTime } from "../../lib/format";
 import { api } from "../../core/api";
 
@@ -92,18 +92,32 @@ export function HomeView() {
           >
             <div className={styles.heroArtWrap}>
               <AnimatePresence mode="wait" initial={false}>
-                <motion.img
-                  key={hero.cover_data_url || hero.id}
-                  className={styles.heroArt}
-                  src={hero.cover_data_url || undefined}
-                  alt=""
-                  draggable={false}
-                  initial={{ opacity: 0, scale: 0.92 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.06 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 22 }}
-                  style={{ width: 112, height: 112 }}
-                />
+                {hero.cover_data_url ? (
+                  <motion.img
+                    key={hero.cover_data_url || hero.id}
+                    className={styles.heroArt}
+                    src={hero.cover_data_url}
+                    alt=""
+                    draggable={false}
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.06 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 22 }}
+                    style={{ width: 112, height: 112 }}
+                  />
+                ) : (
+                  <motion.div
+                    key={`empty-${hero.id}`}
+                    className={styles.heroArtEmpty}
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.06 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 22 }}
+                    aria-hidden
+                  >
+                    <IconMusic size={28} />
+                  </motion.div>
+                )}
               </AnimatePresence>
               <span className={styles.heroShine} aria-hidden />
               <motion.button
@@ -154,7 +168,13 @@ export function HomeView() {
                 transition={{ delay: 0.12, type: "spring", stiffness: 300, damping: 24 }}
               >
                 <span className={styles.chip}>
-                  <img className={styles.chipAvatar} src={hero.cover_data_url || undefined} alt="" />
+                  {hero.cover_data_url ? (
+                    <img className={styles.chipAvatar} src={hero.cover_data_url} alt="" />
+                  ) : (
+                    <span className={styles.chipAvatarEmpty} aria-hidden>
+                      <IconMusic size={10} />
+                    </span>
+                  )}
                   {hero.artist}
                 </span>
                 <span className={styles.chipDot} aria-hidden />

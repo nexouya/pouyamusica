@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 import styles from "./Views.module.css";
 import { GlassPanel } from "../glass/GlassPanel";
-import { IconPlay } from "../icons/Icons";
+import { IconMusic, IconPlay } from "../icons/Icons";
 import type { TrackMeta } from "../../types";
 import { usePlayerStore } from "../../stores/playerStore";
 import { formatTime } from "../../lib/format";
@@ -70,7 +70,9 @@ export function TrackRow({
             draggable={false}
           />
         ) : (
-          <span className={styles.rowThumbFallback}>♪</span>
+          <span className={styles.rowThumbFallback} aria-hidden>
+            <IconMusic size={16} />
+          </span>
         )}
         <span className={styles.rowThumbShade} aria-hidden>
           <IconPlay size={13} />

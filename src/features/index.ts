@@ -5,6 +5,7 @@ import {
   IconHome,
   IconLibrary,
   IconSearch,
+  IconSoundLab,
 } from "../components/icons/Icons";
 import HomeView from "./home";
 import ExploreView from "./explore";
@@ -12,6 +13,7 @@ import LibraryView from "./library";
 import LikedView from "./liked";
 import SearchView from "./search";
 import PlaylistsView from "./playlists";
+import SoundLabView from "./soundlab";
 
 /**
  * Feature bootstrap — import a feature package and registerFeature() it.
@@ -64,6 +66,14 @@ registerFeature({
   component: SearchView,
   order: 6,
   hidden: true,
+});
+
+registerFeature({
+  id: "soundlab",
+  label: "Sound Lab",
+  Icon: IconSoundLab,
+  component: SoundLabView,
+  order: 7,
 });
 
 export {};

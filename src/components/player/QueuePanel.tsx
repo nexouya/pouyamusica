@@ -4,6 +4,7 @@ import { GlassPanel } from "../glass/GlassPanel";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useLibraryStore } from "../../stores/libraryStore";
 import { formatTime } from "../../lib/format";
+import { IconMusic } from "../icons/Icons";
 
 export function QueuePanel() {
   const open = usePlayerStore((s) => s.queueOpen);
@@ -35,7 +36,7 @@ export function QueuePanel() {
             <GlassPanel className={styles.panel} radius={28} strong>
               <div className={styles.header}>
                 <h2 className={styles.title}>Queue</h2>
-                <button type="button" className={styles.close} onClick={toggle}>
+                <button type="button" className={styles.close} onClick={toggle} aria-label="Close queue">
                   Close
                 </button>
               </div>
@@ -51,7 +52,13 @@ export function QueuePanel() {
                     }}
                   >
                     <span className={`mono ${styles.idx}`}>{String(i + 1).padStart(2, "0")}</span>
-                    <img className={styles.thumb} src={t.cover_data_url || undefined} alt="" />
+                    {t.cover_data_url ? (
+                      <img className={styles.thumb} src={t.cover_data_url} alt="" />
+                    ) : (
+                      <span className={`${styles.thumb} ${styles.thumbFallback}`} aria-hidden>
+                        <IconMusic size={14} />
+                      </span>
+                    )}
                     <span className={styles.meta}>
                       <span className={styles.tTitle}>{t.title}</span>
                       <span className={styles.tArtist}>{t.artist}</span>

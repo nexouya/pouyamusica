@@ -1,7 +1,7 @@
 /* Full-width bottom transport bar — matches app chrome (no floating capsule) */
 .bar {
   flex-shrink: 0;
-  height: 72px;
+  height: var(--player-height);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -90,8 +90,7 @@
     rgba(var(--accent-dynamic-rgb), 0.25) 0%,
     rgba(255, 255, 255, 0.05) 100%
   );
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 16px;
+  color: var(--text-secondary);
 }
 
 .meta {
@@ -124,7 +123,11 @@
   color: var(--text-tertiary);
   padding: 6px;
   display: inline-flex;
-  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
   background: none;
   border: none;
 }
@@ -156,13 +159,13 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: 40px;
 }
 
 .ctrl {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -173,8 +176,8 @@
 }
 
 .ctrlSm {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .ctrl:hover {
@@ -187,14 +190,14 @@
 }
 
 .play {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin: 0 8px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #0a0d12;
+  color: var(--on-accent);
   background: linear-gradient(
     145deg,
     rgba(255, 255, 255, 0.98) 0%,
@@ -226,7 +229,7 @@
 
 /* — right — */
 .right {
-  width: 140px;
+  width: 168px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -241,7 +244,7 @@
     width: 160px;
   }
   .right {
-    width: 96px;
+    width: 120px;
   }
   .center {
     max-width: 420px;

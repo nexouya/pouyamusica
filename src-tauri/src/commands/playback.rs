@@ -72,6 +72,33 @@ pub fn set_volume(state: State<'_, AppState>, level: f32) -> Result<(), String> 
     Ok(())
 }
 
+/// Mute/unmute the native engine without writing settings (Sound Lab handoff).
+#[tauri::command]
+pub fn set_engine_muted(state: State<'_, AppState>, muted: bool) -> Result<(), String> {
+    let target = if muted {
+        0.0
+    } else {
+        let settings = crate::settings::load_settings();
+        if settings.volume > 0.0 {
+            settings.volume
+        } else {
+            0.8
+        }
+    };
+    state.engine.set_volume(target).map_err(|e| e.to_string())
+}
+
+/// Read a local audio file as base64 for the Web Audio path (asset-protocol fallback).
+#[tauri::command]
+pub fn read_audio_b64(path: String) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = std::fs::read(&path).map_err(|e| format!("read failed: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty audio file".into());
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 #[tauri::command]
 pub fn get_playback_status(state: State<'_, AppState>) -> PlaybackStatus {
     PlaybackStatus {

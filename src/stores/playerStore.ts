@@ -44,6 +44,12 @@ async function loadWaveform(path: string): Promise<number[]> {
   return api.getWaveform(path).catch(() => []);
 }
 
+/** Lazy import — soundLabStore also reads playerStore (avoid cycle at module init). */
+async function soundLabWeb() {
+  const m = await import("./soundLabStore");
+  return m;
+}
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   current: null,
   playing: false,
@@ -84,12 +90,57 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     try {
       const paths = useLibraryStore.getState().tracks.map((t) => t.path);
       if (paths.length) void api.setQueue(paths).catch(() => undefined);
-      // Backend waits for the audio worker to finish Load before Play.
-      const meta = await api.playTrack(track.path);
+
+      const lab = await soundLabWeb();
+      const labState = lab.useSoundLabStore.getState();
+      const wantWeb = lab.labWantsWeb(labState);
+
+      // If Sound Lab should own audio, mute native BEFORE starting rodio
+      if (wantWeb) {
+        try {
+          await api.setEngineMuted(true);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const meta = await api.playTrack(track.path).catch((e) => {
+        console.warn("playTrack IPC", e);
+        return track;
+      });
+
       if (get().volume <= 0) {
         void get().applyVolume(0.8);
       }
       const waveform = await loadWaveform(track.path);
+
+      if (wantWeb) {
+        try {
+          await api.pause();
+          const dur = await lab.webPlayTrack(track.path, get().volume);
+          set({
+            current: meta || track,
+            playing: true,
+            position: 0,
+            duration: dur || (meta || track).duration_secs || 0,
+            waveform,
+          });
+          return;
+        } catch (e) {
+          console.error("web playTrack failed", e);
+          // Fall back to native so the user still hears music
+          try {
+            await api.setEngineMuted(false);
+            await api.play();
+          } catch {
+            /* ignore */
+          }
+          useLibraryStore.setState({
+            error: `Sound Lab DSP failed to load track — playing clean native. ${e}`,
+          });
+        }
+      }
+
       set({
         current: meta || track,
         playing: true,
@@ -118,6 +169,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { current } = get();
     if (!current) return;
     try {
+      const lab = await soundLabWeb();
+      const labState = lab.useSoundLabStore.getState();
+      // If DSP is selected but web path never engaged, try engage now
+      if (lab.labWantsWeb(labState) && !labState.webPath) {
+        await lab.useSoundLabStore.getState().syncPlaybackPath();
+      }
+      if (lab.useSoundLabStore.getState().webPath) {
+        const playing = await lab.webTogglePlay();
+        set({ playing, position: lab.webPos() });
+        return;
+      }
       await api.togglePlay();
       // Trust the engine, not a local flip — progress events can race.
       const status = await api.getPlaybackStatus().catch(() => null);
@@ -168,7 +230,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (position > 3) {
       await get().seek(0);
       try {
-        await api.play();
+        const lab = await soundLabWeb();
+        if (lab.useSoundLabStore.getState().webPath) {
+          await (await import("./soundLabStore")).webTogglePlay();
+        } else {
+          await api.play();
+        }
         set({ playing: true });
       } catch {
         /* ignore */
@@ -189,6 +256,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   seek: async (secs) => {
     set({ position: secs });
     try {
+      const lab = await soundLabWeb();
+      if (lab.useSoundLabStore.getState().webPath) {
+        lab.webSeek(secs);
+        return;
+      }
       await api.seek(secs);
     } catch (e) {
       console.error("seek failed", e);
@@ -199,6 +271,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const v = Math.min(1, Math.max(0, level));
     set({ volume: v });
     try {
+      const lab = await soundLabWeb();
+      if (lab.useSoundLabStore.getState().webPath) {
+        lab.webVolume(v);
+        // Keep native muted while web path is live (no settings write)
+        await api.setEngineMuted(true).catch(() => undefined);
+        return;
+      }
       await api.setVolume(v);
     } catch (e) {
       console.error("setVolume failed", e);

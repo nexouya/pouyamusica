@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import styles from "../../components/views/Home.module.css";
 import { useLibraryStore, filterTracks } from "../../stores/libraryStore";
 import { EmptyState, TrackRow } from "../../components/views/TrackRow";
-import { IconSearch } from "../../components/icons/Icons";
+import { IconClose, IconSearch } from "../../components/icons/Icons";
 
 export function SearchView() {
   const tracks = useLibraryStore((s) => s.tracks);
@@ -31,7 +31,7 @@ export function SearchView() {
               onClick={() => setQuery("")}
               aria-label="Clear search"
             >
-              ✕
+              <IconClose size={12} />
             </button>
           )}
         </div>

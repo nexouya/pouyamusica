@@ -1,5 +1,5 @@
 .bar {
-  height: 38px;
+  height: var(--titlebar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -103,13 +103,13 @@
 }
 
 .captionBtn:hover {
-  color: #fff;
+  color: var(--text-solid);
   background: rgba(255, 255, 255, 0.1);
 }
 
 .closeBtn:hover {
-  background: #E81123 !important;
-  color: #fff !important;
+  background: var(--windows-close) !important;
+  color: var(--text-solid) !important;
 }
 
 .captionBtn:focus-visible {

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import styles from "./Sidebar.module.css";
 import { GlassPanel } from "../glass/GlassPanel";
-import { IconLogo, IconSearch } from "../icons/Icons";
+import { IconLogo, IconMusic, IconPlus, IconSearch } from "../icons/Icons";
 import { listNavFeatures } from "../../core/features/registry";
 import { useUiStore } from "../../stores/uiStore";
 import { useLibraryStore } from "../../stores/libraryStore";
@@ -98,15 +98,15 @@ export function Sidebar() {
       </nav>
 
       <div className={styles.sectionLabel}>Playlists</div>
-      <div className={styles.playlistScroll} style={{ maxHeight: 140, marginBottom: 12 }}>
+      <div className={`${styles.playlistScroll} ${styles.playlistScrollCapped}`}>
         {playlists.length === 0 && (
           <button
             type="button"
             className={styles.playlistItem}
             onClick={() => setView("playlists")}
           >
-            <span className={styles.thumb} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              +
+            <span className={`${styles.thumb} ${styles.thumbIcon}`} aria-hidden>
+              <IconPlus size={14} />
             </span>
             <span className={styles.playlistText}>
               <span className={styles.playlistTitle}>New playlist</span>
@@ -124,8 +124,8 @@ export function Sidebar() {
               setView("playlists");
             }}
           >
-            <span className={styles.thumb} style={{ display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>
-              ♪
+            <span className={`${styles.thumb} ${styles.thumbIcon}`} aria-hidden>
+              <IconMusic size={13} />
             </span>
             <span className={styles.playlistText}>
               <span className={styles.playlistTitle}>{pl.name}</span>
@@ -157,7 +157,9 @@ export function Sidebar() {
             {t.cover_data_url ? (
               <img className={styles.thumb} src={t.cover_data_url} alt="" draggable={false} />
             ) : (
-              <span className={styles.thumb} style={{ display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>♪</span>
+              <span className={`${styles.thumb} ${styles.thumbIcon}`} aria-hidden>
+                <IconMusic size={13} />
+              </span>
             )}
             <span className={styles.playlistText}>
               <span className={styles.playlistTitle}>{t.album}</span>

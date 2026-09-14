@@ -36,7 +36,8 @@ export type ViewId =
   | "library"
   | "liked"
   | "search"
-  | "playlists";
+  | "playlists"
+  | "soundlab";
 
 export type Playlist = {
   id: string;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./EqualizerModal.module.css";
 import { IconClose } from "../icons/Icons";
@@ -56,12 +56,27 @@ export function EqualizerModal({ open, onClose }: Props) {
     setPreamp(0);
   };
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   return (
     <AnimatePresence>
       {open && (
-        <div className={styles.scrim} onClick={onClose}>
+        <div className={styles.scrim} onClick={onClose} role="presentation">
           <motion.div
             className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Equalizer"
             initial={{ opacity: 0, scale: 0.94, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}
@@ -76,6 +91,9 @@ export function EqualizerModal({ open, onClose }: Props) {
               <div className={styles.headRight}>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={enabled ? "Disable equalizer" : "Enable equalizer"}
                   className={`${styles.toggleSwitch} ${enabled ? styles.toggleOn : ""}`}
                   onClick={() => setEnabled(!enabled)}
                   title={enabled ? "Disable Equalizer" : "Enable Equalizer"}

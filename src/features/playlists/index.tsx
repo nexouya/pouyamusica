@@ -6,6 +6,10 @@ import { useLibraryStore } from "../../stores/libraryStore";
 import { usePlayerStore } from "../../stores/playerStore";
 import { formatTime } from "../../lib/format";
 import {
+  IconChevronDown,
+  IconChevronUp,
+  IconClose,
+  IconMusic,
   IconPlay,
   IconLibrary,
 } from "../../components/icons/Icons";
@@ -242,9 +246,15 @@ export function PlaylistsView() {
                     <span className={styles.plCount} style={{ width: 20, textAlign: "right" }}>
                       {i + 1}
                     </span>
-                    <img className={styles.trackThumb} src={t.cover_data_url || undefined} alt="" />
+                    {t.cover_data_url ? (
+                      <img className={styles.trackThumb} src={t.cover_data_url} alt="" />
+                    ) : (
+                      <span className={`${styles.trackThumb} ${styles.trackThumbFallback}`} aria-hidden>
+                        <IconMusic size={14} />
+                      </span>
+                    )}
                     <span className={styles.trackMeta}>
-                      <span className={styles.trackTitle} style={playing ? { color: "#fff" } : undefined}>
+                      <span className={`${styles.trackTitle} ${playing ? styles.trackTitleOn : ""}`}>
                         {t.title}
                       </span>
                       <span className={styles.trackArtist}>{t.artist}</span>
@@ -266,7 +276,7 @@ export function PlaylistsView() {
                         onClick={() => void moveTrack(selected.id, i, i - 1)}
                         aria-label="Move up"
                       >
-                        ↑
+                        <IconChevronUp size={14} />
                       </button>
                       <button
                         type="button"
@@ -275,7 +285,7 @@ export function PlaylistsView() {
                         onClick={() => void moveTrack(selected.id, i, i + 1)}
                         aria-label="Move down"
                       >
-                        ↓
+                        <IconChevronDown size={14} />
                       </button>
                       <button
                         type="button"
@@ -283,7 +293,7 @@ export function PlaylistsView() {
                         onClick={() => void removeTrack(selected.id, t.path)}
                         aria-label="Remove"
                       >
-                        ✕
+                        <IconClose size={12} />
                       </button>
                     </span>
                   </div>
@@ -306,8 +316,8 @@ export function PlaylistsView() {
           >
             <div className={styles.modalHead}>
               <h3 className={styles.modalTitle}>New playlist</h3>
-              <button type="button" className={styles.iconBtn} onClick={() => setShowCreate(false)}>
-                ✕
+              <button type="button" className={styles.iconBtn} onClick={() => setShowCreate(false)} aria-label="Close">
+                <IconClose size={12} />
               </button>
             </div>
             <div className={styles.modalBody}>
@@ -362,8 +372,8 @@ export function PlaylistsView() {
           >
             <div className={styles.modalHead}>
               <h3 className={styles.modalTitle}>Add tracks to {selected.name}</h3>
-              <button type="button" className={styles.iconBtn} onClick={() => setAddPickerOpen(false)}>
-                ✕
+              <button type="button" className={styles.iconBtn} onClick={() => setAddPickerOpen(false)} aria-label="Close">
+                <IconClose size={12} />
               </button>
             </div>
             <div className={styles.modalBody}>

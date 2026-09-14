@@ -30,6 +30,7 @@
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  cursor: pointer;
 }
 
 .btn:hover {

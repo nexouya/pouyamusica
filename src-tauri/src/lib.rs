@@ -121,6 +121,8 @@ pub fn run() {
             commands::toggle_play,
             commands::seek,
             commands::set_volume,
+            commands::set_engine_muted,
+            commands::read_audio_b64,
             commands::get_playback_status,
             commands::get_waveform,
             commands::get_color_palette,

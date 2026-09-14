@@ -5,6 +5,7 @@ import { usePlayerStore } from "../../stores/playerStore";
 import {
   IconClose,
   IconHeart,
+  IconMusic,
   IconPause,
   IconPlay,
   IconNext,
@@ -100,7 +101,9 @@ export function FocusMode() {
                     />
                   ) : (
                     <div className={styles.fallbackLabel}>
-                      <span className={styles.fallbackIcon}>♪</span>
+                      <span className={styles.fallbackIcon} aria-hidden>
+                        <IconMusic size={32} />
+                      </span>
                     </div>
                   )}
                   <div className={styles.spindleHole} />
@@ -172,6 +175,7 @@ export function FocusMode() {
                   type="button"
                   className={styles.volumeBtn}
                   onClick={() => void applyVolume(volume > 0 ? 0 : 0.8)}
+                  aria-label={volume > 0 ? "Mute" : "Unmute"}
                   title={volume > 0 ? "Mute" : "Unmute"}
                 >
                   {volume > 0 ? <IconVolume size={16} /> : <IconVolumeMute size={16} />}

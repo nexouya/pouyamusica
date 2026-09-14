@@ -8,11 +8,11 @@
 .iconBtn {
   color: var(--text-secondary);
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .iconBtn:hover {

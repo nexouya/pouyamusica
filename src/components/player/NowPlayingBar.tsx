@@ -7,6 +7,7 @@ import { EqualizerModal } from "./EqualizerModal";
 import {
   IconEq,
   IconHeart,
+  IconMusic,
   IconNext,
   IconPause,
   IconPlay,
@@ -76,7 +77,9 @@ export function NowPlayingBar() {
             {current?.cover_data_url ? (
               <img className={styles.art} src={current.cover_data_url} alt="" draggable={false} />
             ) : (
-              <span className={styles.artEmpty}>♪</span>
+              <span className={styles.artEmpty} aria-hidden>
+                <IconMusic size={18} />
+              </span>
             )}
           </button>
         <div className={styles.meta}>
