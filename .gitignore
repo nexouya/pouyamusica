@@ -30,3 +30,9 @@ debug/
 qa/
 qa_scan.py
 debug_shot.py
+
+src-tauri/target/
+*.exe
+.worktrees/
+startup_log.txt
+
