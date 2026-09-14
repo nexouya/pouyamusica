@@ -13,8 +13,8 @@ pub const FFT_SIZE: usize = 1024;
 pub fn spawn_analyzer(
     state: SharedAudioState,
     emit: impl Fn(FftFrame) + Send + 'static,
-) -> thread::JoinHandle<()> {
-    thread::Builder::new()
+) {
+    let spawned = thread::Builder::new()
         .name("pouya-fft".into())
         .spawn(move || {
             let mut planner = FftPlanner::<f32>::new();
@@ -101,6 +101,8 @@ pub fn spawn_analyzer(
 
                 thread::sleep(tick);
             }
-        })
-        .expect("failed to spawn FFT analyzer thread")
+        });
+    if let Err(e) = spawned {
+        eprintln!("failed to spawn FFT analyzer thread: {e}");
+    }
 }

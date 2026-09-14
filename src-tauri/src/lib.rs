@@ -6,10 +6,6 @@ mod settings;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
-#[cfg(target_os = "windows")]
-use window_vibrancy::{apply_acrylic, apply_mica};
-#[cfg(target_os = "macos")]
-use window_vibrancy::apply_mica;
 
 use crate::audio::shared::FftFrame;
 use crate::commands::AppState;
@@ -17,35 +13,24 @@ use crate::library::scanner::{default_music_dir, scan_folder, watch_folder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let state = AppState::new().expect("failed to init audio engine");
+    let state = match AppState::new() {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("failed to init app state: {err:#}");
+            std::process::exit(1);
+        }
+    };
 
-    tauri::Builder::default()
+    if let Err(err) = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(|app| {
             let handle = app.handle().clone();
 
-            let _ = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("startup_log.txt")
-                .and_then(|mut f| std::io::Write::write_all(&mut f, b"Setup started\n"));
-
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
-                let _ = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open("startup_log.txt")
-                    .and_then(|mut f| std::io::Write::write_all(&mut f, b"Main window found and shown\n"));
-            } else {
-                let _ = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open("startup_log.txt")
-                    .and_then(|mut f| std::io::Write::write_all(&mut f, b"WARNING: Main window NOT found\n"));
             }
 
             let state = app.state::<AppState>();
@@ -158,7 +143,10 @@ pub fn run() {
             commands::move_playlist_track,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running pouya music");
+    {
+        eprintln!("error while running pouya music: {err}");
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]

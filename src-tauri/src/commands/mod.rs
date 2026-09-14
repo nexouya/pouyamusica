@@ -37,7 +37,8 @@ impl AppState {
             .filter(|p| p.exists())
             .unwrap_or_else(crate::library::scanner::default_music_dir);
         let engine = AudioEngine::start()?;
-        engine.set_volume(settings.volume.clamp(0.0, 1.0))?;
+        // Do not fail startup if the audio thread is still probing devices.
+        let _ = engine.set_volume(settings.volume.clamp(0.0, 1.0));
         Ok(Self {
             engine,
             library: Mutex::new(Vec::new()),

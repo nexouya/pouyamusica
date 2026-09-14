@@ -148,34 +148,65 @@ impl AudioEngine {
         std::thread::Builder::new()
             .name("pouya-audio".into())
             .spawn(move || {
-                let mut core = match EngineCore::new() {
-                    Ok(c) => c,
+                // Stay alive even when no output device is available so the UI
+                // process never dies; retry the device every few seconds.
+                let mut core: Option<EngineCore> = match EngineCore::new() {
+                    Ok(c) => Some(c),
                     Err(e) => {
-                        eprintln!("audio device error: {e:#}");
-                        return;
+                        eprintln!("audio device unavailable: {e:#}");
+                        None
                     }
                 };
+                let mut last_device_retry = std::time::Instant::now();
                 loop {
                     let cmd = match rx.recv_timeout(std::time::Duration::from_millis(40)) {
                         Ok(c) => c,
                         Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
-                            // Detect natural end-of-track exactly once.
-                            if core.playing && core.sink.empty() {
-                                if let Some(start) = core.started_at.take() {
-                                    core.seek_offset += start.elapsed().as_secs_f64();
+                            if let Some(active) = core.as_mut() {
+                                if active.playing && active.sink.empty() {
+                                    if let Some(start) = active.started_at.take() {
+                                        active.seek_offset += start.elapsed().as_secs_f64();
+                                    }
+                                    active.playing = false;
+                                    state_thread.mark_ended();
+                                    *playing_thread.lock() = false;
+                                    let dur = state_thread.duration_secs();
+                                    *position_thread.lock() = dur;
+                                } else if active.playing {
+                                    *position_thread.lock() = active.position();
                                 }
-                                core.playing = false;
-                                state_thread.mark_ended();
-                                *playing_thread.lock() = false;
-                                let dur = state_thread.duration_secs();
-                                *position_thread.lock() = dur;
-                            } else if core.playing {
-                                *position_thread.lock() = core.position();
+                            } else if last_device_retry.elapsed()
+                                >= std::time::Duration::from_secs(3)
+                            {
+                                match EngineCore::new() {
+                                    Ok(mut recovered) => {
+                                        let vol = *volume_thread.lock();
+                                        recovered.volume = vol;
+                                        recovered.sink.set_volume(vol);
+                                        core = Some(recovered);
+                                        eprintln!("audio device recovered");
+                                    }
+                                    Err(e) => {
+                                        eprintln!("audio device still unavailable: {e:#}");
+                                    }
+                                }
+                                last_device_retry = std::time::Instant::now();
                             }
                             continue;
                         }
                         Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
                     };
+
+                    let Some(core) = core.as_mut() else {
+                        if let AudioCmd::Volume(v) = cmd {
+                            *volume_thread.lock() = v.clamp(0.0, 1.0);
+                        }
+                        if matches!(cmd, AudioCmd::Shutdown) {
+                            break;
+                        }
+                        continue;
+                    };
+
                     match cmd {
                         AudioCmd::Load(path) => {
                             core.path = Some(path.clone());
