@@ -37,6 +37,10 @@ export default function App() {
   useEffect(() => {
     void initLibrary();
     void hydratePlayer();
+    // Warm up YouTube stream core in the background.
+    void import("./stores/onlineStore").then((m) => {
+      void m.useOnlineStore.getState().ensureCore();
+    });
   }, [initLibrary, hydratePlayer]);
 
   // Keep FocusMode / AmbientAura alive when Sound Lab owns the audio graph.
