@@ -19,12 +19,31 @@ const moduleRoot = path.resolve(__dirname, '..');
 
 const run = promisify(execFile);
 
+/** Serialize yt-dlp calls and space them to reduce YouTube rate-limits. */
+let queue = Promise.resolve();
+let lastRun = 0;
+function enqueueYtDlp(fn) {
+  const job = queue.then(async () => {
+    const wait = 1500 - (Date.now() - lastRun);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await fn();
+    } finally {
+      lastRun = Date.now();
+    }
+  });
+  queue = job.catch(() => {});
+  return job;
+}
+
 const LIVE_COOKIES = path.join(moduleRoot, 'cookies-live.txt');
+const USER_COOKIES = path.join(moduleRoot, 'cookies-user.txt');
 let liveCookiesAt = 0;
 
-/** Refresh cookies-live.txt from Chrome (best-effort). */
-async function refreshLiveCookies() {
-  if (Date.now() - liveCookiesAt < 30_000 && fsSync.existsSync(LIVE_COOKIES)) {
+/** Prefer user-imported cookies; never overwrite them from Chrome. */
+async function resolveCookieFile() {
+  if (fsSync.existsSync(USER_COOKIES)) return USER_COOKIES;
+  if (Date.now() - liveCookiesAt < 60_000 && fsSync.existsSync(LIVE_COOKIES)) {
     return LIVE_COOKIES;
   }
   try {
@@ -116,7 +135,7 @@ async function ytdlp(args, options) {
   // Fall back to yt-dlp --cookies-from-browser, then cookies.txt.
   let usedBrowserCookies = false;
   if (process.env.NO_BROWSER_COOKIES !== 'true') {
-    const live = await refreshLiveCookies();
+    const live = await resolveCookieFile();
     if (live) {
       extraArgs.push('--cookies', live);
     } else if (browser) {
@@ -133,13 +152,18 @@ async function ytdlp(args, options) {
     }
   }
 
-  // Supply node as JS runtime if present
-  if (fsSync.existsSync('/usr/local/bin/node')) {
-    extraArgs.push('--js-runtimes', 'node:/usr/local/bin/node');
-  }
+  // yt-dlp needs a JS runtime for signature / n-challenge solving.
+  const nodeBin =
+    process.env.YTDLP_NODE ||
+    (fsSync.existsSync('C:\\Program Files\\nodejs\\node.exe')
+      ? 'C:\\Program Files\\nodejs\\node.exe'
+      : 'node');
+  extraArgs.push('--js-runtimes', `node:${nodeBin}`);
 
   try {
-    return await run(found.cmd, [...found.prefix, ...proxyArgs, ...extraArgs, ...args], { windowsHide: true, ...options });
+    return await enqueueYtDlp(() =>
+      run(found.cmd, [...found.prefix, ...proxyArgs, ...extraArgs, ...args], { windowsHide: true, ...options })
+    );
   } catch (err) {
     const stderr = String(err.stderr || err.message || '');
     // Chrome holds a lock on its cookie DB while running — surface a clear fix.
@@ -180,6 +204,13 @@ export async function search(query, limit = 10) {
       }
     })
     .filter((entry) => entry?.id && /^[A-Za-z0-9_-]{11}$/.test(entry.id))
+    // Skip channels / playlists accidentally returned by search.
+    .filter((entry) => {
+      const t = String(entry._type || entry.type || '');
+      if (t.includes('channel') || t.includes('playlist')) return false;
+      if (String(entry.ie_key || '').toLowerCase().includes('channel')) return false;
+      return true;
+    })
     .map((entry) => {
       let rawThumb = entry.thumbnails?.at(-1)?.url;
       if (rawThumb && rawThumb.includes('googleusercontent.com')) {
@@ -204,7 +235,7 @@ export async function resolveStream(videoId) {
   const { stdout } = await ytdlp(
     [
       '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-      '--extractor-args', 'youtube:player_client=android,ios,web',
+      '--extractor-args', 'youtube:player_client=web_safari,android,ios,web',
       '-g',
       '--no-playlist',
       '--no-warnings',
@@ -216,7 +247,13 @@ export async function resolveStream(videoId) {
   const url = stdout.split('\n').map((l) => l.trim()).find((line) => line.startsWith('http'));
   if (!url) throw new Error('yt-dlp returned no stream url');
 
-  return { url, mimeType: 'audio/mp4', contentLength: null, via: 'yt-dlp' };
+  const isHls = url.includes('.m3u8') || url.includes('/manifest/hls');
+  return {
+    url,
+    mimeType: isHls ? 'application/x-mpegURL' : url.includes('.webm') ? 'audio/webm' : 'audio/mp4',
+    contentLength: null,
+    via: 'yt-dlp'
+  };
 }
 
 /**
@@ -236,10 +273,8 @@ export async function download(videoId, directory) {
   try {
     await ytdlp(
       [
-        // m4a/AAC first: every browser decodes it. WebM/Opus is YouTube's usual
-        // default, but Safari can't play it.
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-        '--extractor-args', 'youtube:player_client=android,ios,web',
+        '-f', 'bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/bestaudio/best',
+        '--extractor-args', 'youtube:player_client=web_safari,android,ios,web',
         '--no-playlist',
         '--no-part',
         '--no-progress',

@@ -128,8 +128,9 @@ impl StreamCore {
             .arg(&server)
             .env("PORT", port.to_string())
             .env("HOST", "127.0.0.1")
-            .env("STREAM_MODE", "auto")
+            .env("STREAM_MODE", "ytdlp")
             .env("ENGINE", "auto")
+            .env("STRICT_YOUTUBE", "true")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .stdin(Stdio::null());
