@@ -67,7 +67,12 @@ export function NowPlayingBar() {
 
   return (
     <>
-      <div className={styles.bar} role="region" aria-label="Now playing">
+      <div
+        className={styles.bar}
+        role="region"
+        aria-label="Now playing"
+        data-playing={playing ? "true" : "false"}
+      >
         {/* Left — now playing */}
         <div className={styles.left}>
           <button

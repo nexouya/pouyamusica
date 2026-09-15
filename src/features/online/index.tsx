@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import styles from "./Online.module.css";
 import { useOnlineStore } from "../../stores/onlineStore";
 import { usePlayerStore } from "../../stores/playerStore";
@@ -42,17 +43,39 @@ export function OnlineView() {
   const [localQ, setLocalQ] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [cookieJson, setCookieJson] = useState("");
+  const heroRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void ensureCore();
   }, [ensureCore]);
+
+  const onHeroMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    const el = heroRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    el.style.setProperty("--mx", `${(((x - 50) / 50) * 10).toFixed(1)}px`);
+    el.style.setProperty("--my", `${(((y - 50) / 50) * 8).toFixed(1)}px`);
+    el.style.setProperty("--mxp", `${x}%`);
+    el.style.setProperty("--myp", `${y}%`);
+  }, []);
+
+  const onHeroLeave = useCallback(() => {
+    const el = heroRef.current;
+    if (!el) return;
+    el.style.setProperty("--mx", "0px");
+    el.style.setProperty("--my", "0px");
+    el.style.setProperty("--mxp", "50%");
+    el.style.setProperty("--myp", "40%");
+  }, []);
 
   const statusLabel = !core?.running
     ? coreError
       ? "Offline"
       : "Starting…"
     : signedIn
-      ? "Live"
+      ? "Live · signed in"
       : "Live · limited";
   const statusClass =
     core?.running && signedIn ? styles.badgeOn : core?.running ? styles.badgeWarn : "";
@@ -70,12 +93,24 @@ export function OnlineView() {
 
   return (
     <div className={styles.view}>
-      <section className={styles.hero}>
+      <motion.section
+        ref={heroRef}
+        className={styles.hero}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        onPointerMove={onHeroMove}
+        onPointerLeave={onHeroLeave}
+      >
+        <span className={styles.heroSheen} aria-hidden />
         <div className={styles.heroTop}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>Online · YouTube Music</p>
-            <h1 className={styles.title}>Search</h1>
-            <p className={styles.sub}>Full tracks. Fast parallel search. Local cache for instant replay.</p>
+            <h1 className={styles.title}>Stream the world</h1>
+            <p className={styles.sub}>
+              Full tracks, instant parallel search, liquid-smooth playback. Local cache for
+              instant replay — never 30-second previews.
+            </p>
           </div>
           <div className={`${styles.badge} ${statusClass}`}>
             <span className={styles.badgePip} aria-hidden />
@@ -85,12 +120,12 @@ export function OnlineView() {
 
         <form className={styles.searchForm} onSubmit={onSearch}>
           <div className={styles.searchBar}>
-            <IconSearch size={17} className={styles.searchIcon} />
+            <IconSearch size={18} className={styles.searchIcon} />
             <input
               className={styles.input}
               value={localQ}
               onChange={(e) => setLocalQ(e.target.value)}
-              placeholder="Artist, song…"
+              placeholder="Artist, song, mix…"
               autoFocus
               aria-label="Search YouTube Music"
             />
@@ -121,7 +156,7 @@ export function OnlineView() {
                 <button
                   type="button"
                   className={styles.searchBtn}
-                  style={{ height: 36, alignSelf: "flex-end", padding: "0 14px" }}
+                  style={{ height: 40, alignSelf: "flex-end" }}
                   onClick={() => {
                     if (!cookieJson.trim()) return;
                     void importCookies(cookieJson);
@@ -137,7 +172,9 @@ export function OnlineView() {
         {(searchError || downloadNote || (buffering && currentId)) && (
           <div className={styles.notes}>
             {buffering && currentId && (
-              <p className={styles.note}>Buffering track — first play fills the local cache…</p>
+              <p className={styles.note}>
+                Buffering full track… first play fills the local cache.
+              </p>
             )}
             {downloadNote && <p className={styles.note}>{downloadNote}</p>}
             {searchError && (
@@ -152,24 +189,37 @@ export function OnlineView() {
             )}
           </div>
         )}
-      </section>
+      </motion.section>
 
       <div className={styles.results}>
         {searching && !results.length && (
-          <div className={styles.loading}>
+          <motion.div
+            className={styles.loading}
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.25 }}
+          >
             <div className={styles.loadingPulse} />
-            <p>Searching…</p>
-          </div>
+            <p>Searching YouTube Music…</p>
+          </motion.div>
         )}
 
         {!searching && !results.length && (
-          <div className={styles.empty}>
+          <motion.div
+            className={styles.empty}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, type: "spring", stiffness: 300, damping: 28 }}
+          >
             <div className={styles.emptyIcon}>
-              <IconOnline size={24} />
+              <IconOnline size={26} />
             </div>
             <h3>Find something to play</h3>
-            <p>Search once — the engine fans out in parallel and caches tracks locally.</p>
-          </div>
+            <p>
+              Search once — engines fan out in parallel and cache tracks locally for instant
+              replay.
+            </p>
+          </motion.div>
         )}
 
         {results.length > 0 && (
@@ -179,14 +229,22 @@ export function OnlineView() {
               <span className={styles.sectionCount}>{results.length} tracks</span>
             </div>
             <div className={styles.grid}>
-              {results.map((song) => {
+              {results.map((song, i) => {
                 const active = currentId === song.videoId;
                 const playingNow = isPlaying(song.videoId);
                 const busy = !!downloading[song.videoId];
                 return (
-                  <div
+                  <motion.div
                     key={song.videoId}
                     className={`${styles.row} ${active ? styles.rowActive : ""}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      delay: Math.min(i, 10) * 0.028,
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 30,
+                    }}
                   >
                     <button
                       type="button"
@@ -211,10 +269,10 @@ export function OnlineView() {
                         className={styles.thumbFallback}
                         style={{ display: song.thumbnail ? "none" : "flex" }}
                       >
-                        <IconMusic size={16} />
+                        <IconMusic size={18} />
                       </span>
                       <span className={styles.playOverlay}>
-                        {playingNow ? <IconPause size={16} /> : <IconPlay size={16} />}
+                        {playingNow ? <IconPause size={18} /> : <IconPlay size={18} />}
                       </span>
                     </button>
 
@@ -232,7 +290,7 @@ export function OnlineView() {
                         onClick={() => void playSong(song)}
                         aria-label="Play"
                       >
-                        <IconPlay size={14} />
+                        <IconPlay size={15} />
                       </button>
                       <button
                         type="button"
@@ -242,10 +300,10 @@ export function OnlineView() {
                         aria-label={busy ? "Downloading" : "Download"}
                         title={busy ? "Saving…" : "Download m4a"}
                       >
-                        <IconDownload size={14} />
+                        <IconDownload size={15} />
                       </button>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>

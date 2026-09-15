@@ -283,12 +283,12 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       ? results.map((s) => ytToTrack(s, base))
       : [track];
 
-    // Stop local / Sound Lab engines.
+    // Stop local / Sound Lab engines so WASAPI is free for Web Audio.
     try {
       const { api } = await import("../core/api");
       await api.pause();
     } catch {
-      /* ignore */
+      /* native engine may already be idle or restarting */
     }
     try {
       const lab = await import("./soundLabStore");

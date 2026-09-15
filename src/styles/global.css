@@ -47,6 +47,11 @@ body {
     var(--bg-base);
 }
 
+::selection {
+  background: rgba(var(--accent-dynamic-rgb), 0.35);
+  color: var(--text-solid);
+}
+
 button {
   font-family: inherit;
   color: inherit;
@@ -76,6 +81,7 @@ img {
   max-width: 100%;
 }
 
+/* Softer, more reactive scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -84,14 +90,49 @@ img {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
+  transition: background 160ms ease;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.22);
   background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: rgba(var(--accent-dynamic-rgb), 0.45);
+  background-clip: content-box;
+}
+
+/* Scroll edge fade for main content */
+.scrollFade {
+  position: relative;
+  height: 100%;
+}
+
+.scrollFade::before,
+.scrollFade::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  right: 0;
+  height: 18px;
+  pointer-events: none;
+  z-index: 5;
+  display: block;
+}
+
+.scrollFade::before {
+  top: 0;
+  margin-bottom: -18px;
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.55), transparent);
+}
+
+.scrollFade::after {
+  bottom: 0;
+  margin-top: -18px;
+  background: linear-gradient(0deg, rgba(8, 10, 14, 0.4), transparent);
 }
 
 .mono {
@@ -116,4 +157,15 @@ input,
 a,
 [data-no-drag] {
   -webkit-app-region: no-drag;
+}
+
+/* Live accent glow used by player / active states */
+@keyframes accentBreathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
 }

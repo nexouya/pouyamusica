@@ -19,10 +19,10 @@ import { ErrorBanner } from "./components/layout/ErrorBanner";
 import "./features";
 
 const viewSpring = {
-  initial: { opacity: 0, y: 10 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -6 },
-  transition: { type: "spring" as const, stiffness: 360, damping: 32, mass: 0.65 },
+  initial: { opacity: 0, y: 14, scale: 0.985 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: -8, scale: 0.99 },
+  transition: { type: "spring" as const, stiffness: 320, damping: 30, mass: 0.7 },
 };
 
 export default function App() {

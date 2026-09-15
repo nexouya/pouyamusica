@@ -15,20 +15,37 @@ export function AmbientAura() {
     if (!el) return;
 
     let smoothedEnergy = 0;
-    const unsub = subscribeAudioVisual((bands) => {
-      const low = bands[2] ?? 0;
-      const mid = bands[10] ?? 0;
-      const target = playing ? Math.min(1, low * 0.7 + mid * 0.3) : 0;
-      smoothedEnergy += (target - smoothedEnergy) * 0.25;
+    let idlePhase = 0;
+    let raf = 0;
 
-      el.style.setProperty("--aura-scale", (1 + smoothedEnergy * 0.16).toFixed(3));
+    const paintIdle = () => {
+      idlePhase += 0.012;
+      const idle = playing ? 0 : 0.06 + Math.sin(idlePhase) * 0.04;
+      const energy = Math.max(smoothedEnergy, idle);
+      el.style.setProperty("--aura-scale", (1 + energy * 0.2).toFixed(3));
       el.style.setProperty(
         "--aura-opacity",
-        (playing ? 0.45 + smoothedEnergy * 0.45 : 0.22).toFixed(3),
+        (playing ? 0.5 + energy * 0.5 : 0.28 + energy * 0.2).toFixed(3),
       );
+      el.style.setProperty("--aura-shift", playing ? "1" : "0.35");
+      raf = requestAnimationFrame(paintIdle);
+    };
+
+    const unsub = subscribeAudioVisual((bands) => {
+      const low = (bands[2] ?? 0) * 0.55 + (bands[3] ?? 0) * 0.45;
+      const mid = (bands[10] ?? 0) * 0.5 + (bands[12] ?? 0) * 0.5;
+      const high = bands[20] ?? 0;
+      const target = playing ? Math.min(1, low * 0.55 + mid * 0.35 + high * 0.1) : 0;
+      smoothedEnergy += (target - smoothedEnergy) * 0.35;
     });
 
-    return () => unsub();
+    cancelAnimationFrame(raf);
+    paintIdle();
+
+    return () => {
+      unsub();
+      cancelAnimationFrame(raf);
+    };
   }, [playing]);
 
   return (
@@ -36,6 +53,7 @@ export function AmbientAura() {
       ref={rootRef}
       className={styles.aura}
       aria-hidden
+      data-playing={playing ? "true" : "false"}
       style={{ ["--accent-dynamic-rgb" as string]: accentRgb }}
     >
       <div className={`${styles.orb} ${styles.orbA}`} />

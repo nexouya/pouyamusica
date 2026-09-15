@@ -8,6 +8,22 @@
     var(--bg-base);
   overflow: hidden;
   border-radius: 12px;
+  position: relative;
+}
+
+/* Soft vignette for depth */
+.app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background: radial-gradient(
+    ellipse 130% 100% at 50% 45%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.28) 100%
+  );
+  mix-blend-mode: multiply;
 }
 
 .body {
@@ -32,13 +48,16 @@
   margin: 0 8px 8px 8px;
   border-radius: 16px;
   overflow: hidden;
-  background: rgba(12, 15, 22, 0.4);
+  background: rgba(12, 15, 22, 0.42);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 10px 32px rgba(0, 0, 0, 0.22);
   position: relative;
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
 }
 
 .mainScroll {
@@ -46,6 +65,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
 }
 
 .viewHost {

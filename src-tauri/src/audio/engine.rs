@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
 use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -34,17 +35,20 @@ pub enum AudioCmd {
     Shutdown,
 }
 
-/// Handle used by Tauri commands. Safe to share across threads.
-#[derive(Clone)]
-pub struct AudioEngine {
-    tx: crossbeam_channel::Sender<AudioCmd>,
+struct EngineShared {
+    tx: Mutex<Option<crossbeam_channel::Sender<AudioCmd>>>,
     state: SharedAudioState,
     current_path: Arc<Mutex<Option<PathBuf>>>,
     volume: Arc<Mutex<f32>>,
     position: Arc<Mutex<f64>>,
     playing: Arc<Mutex<bool>>,
-    #[allow(dead_code)]
     device_ok: Arc<AtomicBool>,
+}
+
+/// Handle used by Tauri commands. Safe to share across threads.
+#[derive(Clone)]
+pub struct AudioEngine {
+    shared: Arc<EngineShared>,
 }
 
 struct EngineCore {
@@ -165,44 +169,44 @@ fn send_ack(ack: Option<crossbeam_channel::Sender<std::result::Result<(), String
     }
 }
 
-impl AudioEngine {
-    pub fn start() -> Result<Self> {
-        let (tx, rx) = crossbeam_channel::unbounded::<AudioCmd>();
-        let state = SharedAudioState::new();
-        let current_path = Arc::new(Mutex::new(None));
-        let volume = Arc::new(Mutex::new(0.8));
-        let position = Arc::new(Mutex::new(0.0));
-        let playing = Arc::new(Mutex::new(false));
-        let device_ok = Arc::new(AtomicBool::new(false));
+fn spawn_worker(
+    state: SharedAudioState,
+    current_path: Arc<Mutex<Option<PathBuf>>>,
+    volume: Arc<Mutex<f32>>,
+    position: Arc<Mutex<f64>>,
+    playing: Arc<Mutex<bool>>,
+    device_ok: Arc<AtomicBool>,
+) -> Result<crossbeam_channel::Sender<AudioCmd>> {
+    let (tx, rx) = crossbeam_channel::unbounded::<AudioCmd>();
+    let state_thread = state.clone();
+    let path_thread = current_path.clone();
+    let volume_thread = volume.clone();
+    let position_thread = position.clone();
+    let playing_thread = playing.clone();
+    let device_thread = device_ok.clone();
 
-        let state_thread = state.clone();
-        let path_thread = current_path.clone();
-        let volume_thread = volume.clone();
-        let position_thread = position.clone();
-        let playing_thread = playing.clone();
-        let device_thread = device_ok.clone();
-
-        std::thread::Builder::new()
-            .name("pouya-audio".into())
-            .spawn(move || {
-                // Stay alive even when no output device is available so the UI
-                // process never dies; retry the device every few seconds.
-                let mut core: Option<EngineCore> = match EngineCore::new() {
-                    Ok(c) => {
-                        device_thread.store(true, Ordering::SeqCst);
-                        Some(c)
-                    }
-                    Err(e) => {
-                        device_thread.store(false, Ordering::SeqCst);
-                        eprintln!("audio device unavailable: {e:#}");
-                        None
-                    }
-                };
-                let mut last_device_retry = std::time::Instant::now();
-                loop {
-                    let cmd = match rx.recv_timeout(std::time::Duration::from_millis(40)) {
-                        Ok(c) => c,
-                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+    std::thread::Builder::new()
+        .name("pouya-audio".into())
+        .spawn(move || {
+            // Stay alive even when no output device is available so the UI
+            // process never dies; retry the device every few seconds.
+            let mut core: Option<EngineCore> = match EngineCore::new() {
+                Ok(c) => {
+                    device_thread.store(true, Ordering::SeqCst);
+                    Some(c)
+                }
+                Err(e) => {
+                    device_thread.store(false, Ordering::SeqCst);
+                    eprintln!("audio device unavailable: {e:#}");
+                    None
+                }
+            };
+            let mut last_device_retry = std::time::Instant::now();
+            loop {
+                let cmd = match rx.recv_timeout(std::time::Duration::from_millis(40)) {
+                    Ok(c) => c,
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                        let tick = catch_unwind(AssertUnwindSafe(|| {
                             if let Some(active) = core.as_mut() {
                                 if active.playing && active.sink.empty() {
                                     if let Some(start) = active.started_at.take() {
@@ -224,7 +228,6 @@ impl AudioEngine {
                                         let vol = *volume_thread.lock();
                                         recovered.volume = vol;
                                         recovered.sink.set_volume(vol);
-                                        // Reload the last track so play works after recovery.
                                         if let Some(path) = path_thread.lock().clone() {
                                             recovered.path = Some(path);
                                             let pos = *position_thread.lock();
@@ -244,11 +247,18 @@ impl AudioEngine {
                                 }
                                 last_device_retry = std::time::Instant::now();
                             }
-                            continue;
+                        }));
+                        if tick.is_err() {
+                            eprintln!("audio tick panicked — dropping device core");
+                            core = None;
+                            device_thread.store(false, Ordering::SeqCst);
                         }
-                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
-                    };
+                        continue;
+                    }
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                };
 
+                let handled = catch_unwind(AssertUnwindSafe(|| {
                     let Some(core) = core.as_mut() else {
                         match cmd {
                             AudioCmd::Volume(v) => {
@@ -261,9 +271,9 @@ impl AudioEngine {
                                 send_ack(ack, Err("audio device unavailable".into()));
                             }
                             AudioCmd::Pause | AudioCmd::Stop => {}
-                            AudioCmd::Shutdown => break,
+                            AudioCmd::Shutdown => {}
                         }
-                        continue;
+                        return;
                     };
 
                     match cmd {
@@ -316,7 +326,6 @@ impl AudioEngine {
                         AudioCmd::Seek { secs, ack } => {
                             let autoplay = core.playing;
                             let dur = state_thread.duration_secs();
-                            // Clamp so dragging past EOF does not immediately end the track.
                             let max = if dur > 0.5 { (dur - 0.05).max(0.0) } else { dur.max(0.0) };
                             let secs = if dur > 0.0 { secs.clamp(0.0, max) } else { secs.max(0.0) };
                             let r = core
@@ -332,39 +341,94 @@ impl AudioEngine {
                             core.sink.set_volume(core.volume);
                             *volume_thread.lock() = core.volume;
                         }
-                        AudioCmd::Shutdown => break,
+                        AudioCmd::Shutdown => {}
                     }
 
                     if core.playing {
                         *position_thread.lock() = core.position();
                     }
+                }));
+
+                if handled.is_err() {
+                    eprintln!("audio command panicked — recovering engine core");
+                    core = None;
+                    device_thread.store(false, Ordering::SeqCst);
                 }
-            })
-            .map_err(|e| anyhow!("spawn audio thread: {e}"))?;
+            }
+        })
+        .map_err(|e| anyhow!("spawn audio thread: {e}"))?;
+
+    Ok(tx)
+}
+
+impl AudioEngine {
+    pub fn start() -> Result<Self> {
+        let state = SharedAudioState::new();
+        let current_path = Arc::new(Mutex::new(None));
+        let volume = Arc::new(Mutex::new(0.8));
+        let position = Arc::new(Mutex::new(0.0));
+        let playing = Arc::new(Mutex::new(false));
+        let device_ok = Arc::new(AtomicBool::new(false));
+
+        let tx = spawn_worker(
+            state.clone(),
+            current_path.clone(),
+            volume.clone(),
+            position.clone(),
+            playing.clone(),
+            device_ok.clone(),
+        )?;
 
         Ok(Self {
-            tx,
-            state,
-            current_path,
-            volume,
-            position,
-            playing,
-            device_ok,
+            shared: Arc::new(EngineShared {
+                tx: Mutex::new(Some(tx)),
+                state,
+                current_path,
+                volume,
+                position,
+                playing,
+                device_ok,
+            }),
         })
     }
 
     #[allow(dead_code)]
     pub fn shared_state(&self) -> SharedAudioState {
-        self.state.clone()
+        self.shared.state.clone()
     }
 
     pub fn spawn_fft(&self, emit: impl Fn(FftFrame) + Send + 'static) {
-        spawn_analyzer(self.state.clone(), emit);
+        spawn_analyzer(self.shared.state.clone(), emit);
     }
 
-    fn send(&self, cmd: AudioCmd) -> Result<()> {
-        self.tx
-            .send(cmd)
+    fn live_tx(&self) -> Option<crossbeam_channel::Sender<AudioCmd>> {
+        self.shared.tx.lock().clone()
+    }
+
+    fn respawn(&self) -> Result<crossbeam_channel::Sender<AudioCmd>> {
+        *self.shared.tx.lock() = None;
+        let tx = spawn_worker(
+            self.shared.state.clone(),
+            self.shared.current_path.clone(),
+            self.shared.volume.clone(),
+            self.shared.position.clone(),
+            self.shared.playing.clone(),
+            self.shared.device_ok.clone(),
+        )?;
+        *self.shared.tx.lock() = Some(tx.clone());
+        Ok(tx)
+    }
+
+    /// Send a command; if the worker is dead, restart it and retry once.
+    fn send(&self, make: impl Fn() -> AudioCmd) -> Result<()> {
+        if let Some(tx) = self.live_tx() {
+            if tx.send(make()).is_ok() {
+                return Ok(());
+            }
+            eprintln!("audio worker dead — respawning");
+        }
+        let tx = self.respawn()?;
+        tx.send(make())
             .map_err(|_| anyhow!("audio thread unavailable"))
     }
 
@@ -384,75 +448,81 @@ impl AudioEngine {
         if !p.exists() {
             return Err(anyhow!("file not found: {}", p.display()));
         }
-        *self.current_path.lock() = Some(p.clone());
+        *self.shared.current_path.lock() = Some(p.clone());
         let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
-        self.send(AudioCmd::Load {
-            path: p,
-            ack: Some(ack_tx),
+        let path2 = p.clone();
+        self.send(move || AudioCmd::Load {
+            path: path2.clone(),
+            ack: Some(ack_tx.clone()),
         })?;
         self.wait_ack(ack_rx)
     }
 
     pub fn play(&self) -> Result<()> {
         let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
-        self.send(AudioCmd::Play { ack: Some(ack_tx) })?;
+        self.send(move || AudioCmd::Play {
+            ack: Some(ack_tx.clone()),
+        })?;
         self.wait_ack(ack_rx)
     }
 
     pub fn pause(&self) -> Result<()> {
-        self.send(AudioCmd::Pause)
+        self.send(|| AudioCmd::Pause)
     }
 
     pub fn toggle(&self) -> Result<()> {
         let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
-        self.send(AudioCmd::Toggle { ack: Some(ack_tx) })?;
+        self.send(move || AudioCmd::Toggle {
+            ack: Some(ack_tx.clone()),
+        })?;
         self.wait_ack(ack_rx)
     }
 
     #[allow(dead_code)]
     pub fn stop(&self) -> Result<()> {
-        self.send(AudioCmd::Stop)
+        self.send(|| AudioCmd::Stop)
     }
 
     pub fn set_volume(&self, level: f32) -> Result<()> {
         let v = level.clamp(0.0, 1.0);
-        *self.volume.lock() = v;
-        self.send(AudioCmd::Volume(v))
+        *self.shared.volume.lock() = v;
+        self.send(move || AudioCmd::Volume(v))
     }
 
     #[allow(dead_code)]
     pub fn volume(&self) -> f32 {
-        *self.volume.lock()
+        *self.shared.volume.lock()
     }
 
     pub fn is_playing(&self) -> bool {
-        *self.playing.lock()
+        *self.shared.playing.lock()
     }
 
     /// True once when a track finishes naturally; subsequent calls return false.
     pub fn take_ended(&self) -> bool {
-        self.state.take_ended()
+        self.shared.state.take_ended()
     }
 
     pub fn position_secs(&self) -> f64 {
-        *self.position.lock()
+        *self.shared.position.lock()
     }
 
     pub fn duration_secs(&self) -> f64 {
-        self.state.duration_secs()
+        self.shared.state.duration_secs()
     }
 
     pub fn seek(&self, position_secs: f64) -> Result<()> {
         let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
-        self.send(AudioCmd::Seek {
-            secs: position_secs.max(0.0),
-            ack: Some(ack_tx),
+        let secs = position_secs.max(0.0);
+        self.send(move || AudioCmd::Seek {
+            secs,
+            ack: Some(ack_tx.clone()),
         })?;
         self.wait_ack(ack_rx)
     }
 
     pub fn current_path(&self) -> Option<PathBuf> {
-        self.current_path.lock().clone()
+        self.shared.current_path.lock().clone()
     }
 
     pub fn peaks(&self, path: &str, buckets: usize) -> Result<Vec<f32>> {
@@ -461,6 +531,6 @@ impl AudioEngine {
 
     #[allow(dead_code)]
     pub fn device_available(&self) -> bool {
-        self.device_ok.load(Ordering::SeqCst)
+        self.shared.device_ok.load(Ordering::SeqCst)
     }
 }

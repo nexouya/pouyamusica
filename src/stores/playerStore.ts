@@ -167,6 +167,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         return;
       }
     }
+
+    // Release Web Audio / MediaElementSource before handing the device back to rodio.
+    // On Windows WASAPI, overlapping Web Audio + native output can kill the audio thread.
+    try {
+      const online = await import("./onlineStore");
+      online.useOnlineStore.getState().dispose();
+    } catch {
+      /* ignore */
+    }
+
     try {
       // Build play context. Explicit queue (playlist/liked) wins over library order.
       const context =
@@ -197,8 +207,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       } catch (e) {
         console.warn("playTrack IPC", e);
         set({ playing: false });
+        const msg = String(e);
         useLibraryStore.setState({
-          error: `Playback failed: ${e}`,
+          error: /audio thread unavailable|audio device/i.test(msg)
+            ? "Audio engine restarted — try Play again"
+            : `Playback failed: ${msg}`,
         });
         return;
       }
