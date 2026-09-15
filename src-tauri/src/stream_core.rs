@@ -29,18 +29,33 @@ impl StreamCore {
     }
 
     fn resolve_core_dir() -> Option<PathBuf> {
-        // Dev: project/stream-core next to src-tauri
-        let candidates = [
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../stream-core"),
-            PathBuf::from("stream-core"),
-            std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.join("stream-core")))
-                .unwrap_or_default(),
-            dirs::config_dir()
-                .map(|d| d.join("pouya-music").join("stream-core"))
-                .unwrap_or_default(),
-        ];
+        // Installed / portable layouts first — CARGO_MANIFEST_DIR is a
+        // build-machine path and must not be the primary lookup in release.
+        let mut candidates: Vec<PathBuf> = Vec::new();
+
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                candidates.push(dir.join("stream-core"));
+                candidates.push(dir.join("resources").join("stream-core"));
+                candidates.push(dir.join("../stream-core"));
+                // Tauri Windows: resources often live next to the exe under resources\
+                candidates.push(dir.join("resources"));
+            }
+        }
+
+        // Common install/config locations
+        if let Some(cfg) = dirs::config_dir() {
+            candidates.push(cfg.join("pouya-music").join("stream-core"));
+        }
+
+        // Dev layout (source tree)
+        candidates.push(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("stream-core"),
+        );
+        candidates.push(PathBuf::from("stream-core"));
+
         for c in candidates {
             if c.join("server.js").exists() {
                 return Some(c);
