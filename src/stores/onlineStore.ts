@@ -246,7 +246,11 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
         }
       }
 
-      set({ results: songs, searching: false });
+      set({ results: songs, searching: false, searchError: null });
+      // Kick a light prefetch of the first result so Play can be near-instant.
+      if (songs[0]?.videoId) {
+        void fetch(`${baseUrl(core)}/stream/${songs[0].videoId}`).catch(() => undefined);
+      }
     } catch (e) {
       set({ searching: false, searchError: String(e), results: [] });
     }

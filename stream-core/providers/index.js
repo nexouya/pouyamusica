@@ -50,22 +50,10 @@ export async function search(query, limit = 25) {
     /* continue with fallbacks */
   }
 
-  // Secondary: direct yt-dlp web search for depth / official uploads.
-  if (songs.length < cap && ENGINE !== 'innertube') {
-    const remaining = cap - songs.length;
+  // Only widen if very thin — extra yt-dlp calls are slow.
+  if (songs.length < Math.min(5, cap) && ENGINE !== 'innertube') {
     try {
-      const extra = await ytdlp.search(query, remaining + 8);
-      dedupePush(songs, seen, extra);
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
-  // Tertiary: yt-dlp with "official audio" bias if still thin.
-  if (songs.length < Math.min(8, cap) && ENGINE !== 'innertube') {
-    try {
-      const extra = await ytdlp.search(`${query} official audio`, cap);
-      dedupePush(songs, seen, extra);
+      dedupePush(songs, seen, await ytdlp.search(query, cap));
     } catch (e) {
       /* ignore */
     }
@@ -81,19 +69,38 @@ export function status() {
 // Stream URLs stay valid for hours but are tied to the requesting IP, so a
 // short cache keeps repeated <audio> range requests from re-resolving.
 const cache = new Map();
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 25 * 60 * 1000;
+
+const inflight = new Map();
 
 export async function resolveStream(videoId) {
   const hit = cache.get(videoId);
   if (hit && hit.expires > Date.now()) return hit.value;
 
-  const value = await chain.resolveStream(videoId);
-  cache.set(videoId, { value, expires: Date.now() + TTL_MS });
+  // Deduplicate concurrent resolves for the same id.
+  if (inflight.has(videoId)) return inflight.get(videoId);
 
-  if (cache.size > 500) {
-    for (const [key, entry] of cache) {
-      if (entry.expires <= Date.now()) cache.delete(key);
+  const job = (async () => {
+    const value = await chain.resolveStream(videoId);
+    cache.set(videoId, { value, expires: Date.now() + TTL_MS });
+    inflight.delete(videoId);
+    if (cache.size > 500) {
+      for (const [key, entry] of cache) {
+        if (entry.expires <= Date.now()) cache.delete(key);
+      }
     }
-  }
-  return value;
+    return value;
+  })().catch((e) => {
+    inflight.delete(videoId);
+    throw e;
+  });
+
+  inflight.set(videoId, job);
+  return job;
+}
+
+/** Warm the stream-URL cache in the background (does not throw). */
+export function prefetchStream(videoId) {
+  if (!videoId) return;
+  resolveStream(videoId).catch(() => {});
 }

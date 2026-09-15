@@ -62,20 +62,47 @@ function enqueueYtDlp(fn) {
 const LIVE_COOKIES = path.join(moduleRoot, 'cookies-live.txt');
 const USER_COOKIES = path.join(moduleRoot, 'cookies-user.txt');
 let liveCookiesAt = 0;
+let preferBrowser = true;
 
-/** Prefer user-imported cookies; never overwrite them from Chrome. */
-async function resolveCookieFile() {
-  if (fsSync.existsSync(USER_COOKIES)) return USER_COOKIES;
-  if (Date.now() - liveCookiesAt < 60_000 && fsSync.existsSync(LIVE_COOKIES)) {
-    return LIVE_COOKIES;
+// If Chrome is running, its cookie DB is locked — start on file cookies immediately.
+try {
+  if (process.platform === 'win32') {
+    const { execSync } = await import('node:child_process');
+    const out = execSync('tasklist /FI "IMAGENAME eq chrome.exe" /FO CSV /NH', {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 3000,
+    });
+    if (/chrome\.exe/i.test(out)) preferBrowser = false;
   }
-  try {
-    writeCookiesFile(LIVE_COOKIES);
-    liveCookiesAt = Date.now();
-    return LIVE_COOKIES;
-  } catch {
-    return fsSync.existsSync(LIVE_COOKIES) ? LIVE_COOKIES : null;
+} catch {
+  /* keep preferBrowser */
+}
+
+/** Chrome-first cookie resolution. */
+async function cookieArgs() {
+  // 1) Always try live Chrome cookies when allowed (user is signed in).
+  if (preferBrowser && process.env.NO_BROWSER_COOKIES !== 'true') {
+    return [
+      { args: ['--cookies-from-browser', 'chrome'], browser: true },
+    ];
   }
+  // 2) Fallback: imported / extracted Netscape file.
+  if (fsSync.existsSync(USER_COOKIES)) {
+    return [{ args: ['--cookies', USER_COOKIES], browser: false }];
+  }
+  if (Date.now() - liveCookiesAt > 60_000 || !fsSync.existsSync(LIVE_COOKIES)) {
+    try {
+      writeCookiesFile(LIVE_COOKIES);
+      liveCookiesAt = Date.now();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (fsSync.existsSync(LIVE_COOKIES)) {
+    return [{ args: ['--cookies', LIVE_COOKIES], browser: false }];
+  }
+  return [{ args: [], browser: false }];
 }
 
 /** Every plausible way yt-dlp might be installed, in order of preference. */
@@ -150,28 +177,17 @@ async function ytdlp(args, options) {
   const proxyArgs = process.env.PROXY_URL ? ['--proxy', process.env.PROXY_URL] : [];
 
   const extraArgs = [];
-  const browser = process.env.NO_BROWSER_COOKIES !== 'true'
-    ? (process.env.BROWSER_COOKIES || getPrimaryBrowser())
-    : null;
-
-  // Prefer our own decrypted cookies-live.txt (handles Chrome DPAPI issues).
-  // Fall back to yt-dlp --cookies-from-browser, then cookies.txt.
+  // Chrome-first: always try --cookies-from-browser chrome (user is signed in).
+  // If the DB is locked, fall back to cookies-user.txt / cookies-live.txt.
   let usedBrowserCookies = false;
   if (process.env.NO_BROWSER_COOKIES !== 'true') {
-    const live = await resolveCookieFile();
-    if (live) {
-      extraArgs.push('--cookies', live);
-    } else if (browser) {
-      extraArgs.push('--cookies-from-browser', browser);
+    if (preferBrowser) {
+      extraArgs.push('--cookies-from-browser', 'chrome');
       usedBrowserCookies = true;
-    } else {
-      const cookiePath = [
-        process.env.COOKIES_FILE,
-        path.resolve(moduleRoot, 'cookies.txt'),
-      ]
-        .filter(Boolean)
-        .find((p) => fsSync.existsSync(p));
-      if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    } else if (fsSync.existsSync(USER_COOKIES)) {
+      extraArgs.push('--cookies', USER_COOKIES);
+    } else if (fsSync.existsSync(LIVE_COOKIES)) {
+      extraArgs.push('--cookies', LIVE_COOKIES);
     }
   }
 
@@ -189,15 +205,55 @@ async function ytdlp(args, options) {
     );
   } catch (err) {
     const stderr = String(err.stderr || err.message || '');
-    // Chrome holds a lock on its cookie DB while running — surface a clear fix.
-    if (/Could not copy Chrome cookie database|Sign in to confirm/i.test(stderr)) {
-      const friendly = new Error(
-        /Could not copy Chrome cookie database/i.test(stderr)
-          ? 'Chrome is locking its cookie database. Close Google Chrome completely, then retry. (Or export cookies.txt via an extension and place it in stream-core/cookies.txt)'
-          : 'YouTube rejected this session (bot-check / expired cookies). Re-export cookies from Chrome (signed into youtube.com) and use Online → Import cookies.'
+    // Chrome DB locked → switch to file cookies and retry once.
+    if (usedBrowserCookies && /Could not copy Chrome cookie database/i.test(stderr)) {
+      preferBrowser = false;
+      console.warn('[ytdlp] Chrome cookie DB locked — falling back to cookies-user.txt');
+      const fileArgs = fsSync.existsSync(USER_COOKIES)
+        ? ['--cookies', USER_COOKIES]
+        : fsSync.existsSync(LIVE_COOKIES)
+          ? ['--cookies', LIVE_COOKIES]
+          : [];
+      try {
+        return await enqueueYtDlp(() =>
+          run(
+            found.cmd,
+            [...found.prefix, ...proxyArgs, ...fileArgs, ...extraArgs.filter((a) => a !== '--cookies-from-browser' && a !== 'chrome'), ...args],
+            { windowsHide: true, ...options }
+          )
+        );
+      } catch (err2) {
+        const s2 = String(err2.stderr || err2.message || '');
+        if (/Sign in to confirm/i.test(s2)) {
+          throw new Error(
+            'Chrome is locked and cookies-user.txt is stale. Close Chrome once, or re-export cookies from youtube.com.'
+          );
+        }
+        throw err2;
+      }
+    }
+    if (/Sign in to confirm/i.test(stderr)) {
+      // Retry once with file cookies even if we started from browser.
+      const fileArgs = fsSync.existsSync(USER_COOKIES)
+        ? ['--cookies', USER_COOKIES]
+        : [];
+      if (fileArgs.length && usedBrowserCookies) {
+        preferBrowser = false;
+        try {
+          return await enqueueYtDlp(() =>
+            run(
+              found.cmd,
+              [...found.prefix, ...proxyArgs, ...fileArgs, ...extraArgs.filter((a, i, arr) => a !== '--cookies-from-browser' && arr[i - 1] !== '--cookies-from-browser'), ...args],
+              { windowsHide: true, ...options }
+            )
+          );
+        } catch {
+          /* fall through */
+        }
+      }
+      throw new Error(
+        'YouTube rejected this session. Keep Chrome signed into youtube.com, or Import cookies in Online.'
       );
-      friendly.stderr = stderr;
-      throw friendly;
     }
     throw err;
   }

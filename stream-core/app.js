@@ -3,6 +3,7 @@ import path from 'node:path';
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createAudioStreamer } from './audio.js';
+import { prefetchStream } from './providers/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -114,6 +115,8 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
         }
       }
       res.json({ query: q, songs });
+      // Warm only the first hit so Play is near-instant without hammering YT.
+      if (songs?.[0]?.videoId) prefetchStream(songs[0].videoId);
     } catch (error) {
       res.status(502).json({ error: error.message });
     }
