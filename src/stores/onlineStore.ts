@@ -39,6 +39,7 @@ type OnlineState = {
   toggleOnlinePlay: () => Promise<void>;
   seekOnline: (secs: number) => void;
   downloadSong: (song: YtSong) => Promise<void>;
+  importCookies: (json: string) => Promise<void>;
   dispose: () => void;
 };
 
@@ -443,6 +444,31 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
         downloading: { ...s.downloading, [song.videoId]: false },
         downloadNote: `Download failed: ${e}`,
       }));
+    }
+  },
+
+  importCookies: async (json: string) => {
+    try {
+      await get().ensureCore();
+      const base = baseUrl(get().core);
+      const payload = JSON.parse(json);
+      const res = await fetch(`${base}/api/import-cookies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "import failed");
+      set({
+        signedIn: !!data.signedIn,
+        cookieHint: data.signedIn
+          ? "Cookies imported — signed in"
+          : "Imported, but no SID cookie found",
+        searchError: data.signedIn ? null : "No SID cookie in import — export while signed into youtube.com",
+        coreError: null,
+      });
+    } catch (e) {
+      set({ searchError: `Cookie import failed: ${e}` });
     }
   },
 

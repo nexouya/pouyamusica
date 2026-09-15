@@ -27,15 +27,36 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
   app.get('/healthz', (_req, res) => res.json({ ok: true, strategy: audio.strategy }));
 
   app.get('/api/cookie-status', async (_req, res) => {
+    const userFile = path.join(__dirname, 'cookies-user.txt');
+    // 1) Imported user cookies always win — do not probe Chrome if present.
+    try {
+      if (fsSync.existsSync(userFile)) {
+        const text = fsSync.readFileSync(userFile, 'utf8');
+        const signedIn = /(^|\t)(SID|HSID|__Secure-1PSID|__Secure-3PSID)\t/m.test(text);
+        return res.json({
+          ok: true,
+          signedIn,
+          source: 'cookies-user.txt',
+          bytes: Buffer.byteLength(text),
+          hint: signedIn
+            ? 'Signed-in cookies loaded from cookies-user.txt'
+            : 'cookies-user.txt has no SID — re-export from Chrome',
+        });
+      }
+    } catch {
+      /* fall through */
+    }
+    // 2) Best-effort Chrome extract (may fail if Chrome is locked).
     try {
       const { writeCookiesFile } = await import('./chromeCookies.mjs');
-      const dest = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cookies-live.txt');
+      const dest = path.join(__dirname, 'cookies-live.txt');
       const info = writeCookiesFile(dest);
       const text = fsSync.readFileSync(dest, 'utf8');
       const signedIn = /(^|\t)(SID|__Secure-1PSID|__Secure-3PSID)\t/m.test(text);
       res.json({
         ok: true,
         signedIn,
+        source: 'chrome',
         bytes: info.bytes,
         hint: signedIn
           ? 'Signed-in Chrome cookies ready'
@@ -45,9 +66,28 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
       res.json({
         ok: false,
         signedIn: false,
+        source: 'none',
         error: e.message,
-        hint: 'Close Chrome if cookie DB is locked, sign into youtube.com, or import cookies.txt',
+        hint: 'Import cookies: Online → Import cookies (JSON from EditThisCookie / Get cookies.txt LOCALLY)',
       });
+    }
+  });
+
+  // Import cookies from extension JSON (POST body).
+  app.post('/api/import-cookies', express.json({ limit: '2mb' }), async (req, res) => {
+    try {
+      const list = Array.isArray(req.body) ? req.body : req.body?.cookies;
+      if (!Array.isArray(list) || !list.length) {
+        return res.status(400).json({ ok: false, error: 'expected cookie array' });
+      }
+      const { toNetscape } = await import('./import-cookie-json.mjs');
+      const text = toNetscape(list);
+      const dest = path.join(__dirname, 'cookies-user.txt');
+      fsSync.writeFileSync(dest, text, 'utf8');
+      const signedIn = /(^|\t)(SID|HSID|__Secure-1PSID|__Secure-3PSID)\t/m.test(text);
+      res.json({ ok: true, signedIn, bytes: Buffer.byteLength(text), dest });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
     }
   });
 

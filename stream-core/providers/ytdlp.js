@@ -19,21 +19,44 @@ const moduleRoot = path.resolve(__dirname, '..');
 
 const run = promisify(execFile);
 
-/** Serialize yt-dlp calls and space them to reduce YouTube rate-limits. */
-let queue = Promise.resolve();
+/** Parallel yt-dlp jobs (up to 3) with spacing to reduce rate-limits. */
+let active = 0;
+const waiters = [];
 let lastRun = 0;
+const MAX_PARALLEL = 3;
+
+function acquireSlot() {
+  return new Promise((resolve) => {
+    if (active < MAX_PARALLEL) {
+      active++;
+      resolve();
+    } else {
+      waiters.push(resolve);
+    }
+  });
+}
+
+function releaseSlot() {
+  active--;
+  const next = waiters.shift();
+  if (next) {
+    active++;
+    next();
+  }
+}
+
 function enqueueYtDlp(fn) {
-  const job = queue.then(async () => {
-    const wait = 1500 - (Date.now() - lastRun);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  return (async () => {
+    await acquireSlot();
     try {
+      const wait = 400 - (Date.now() - lastRun);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       return await fn();
     } finally {
       lastRun = Date.now();
+      releaseSlot();
     }
-  });
-  queue = job.catch(() => {});
-  return job;
+  })();
 }
 
 const LIVE_COOKIES = path.join(moduleRoot, 'cookies-live.txt');
@@ -171,7 +194,7 @@ async function ytdlp(args, options) {
       const friendly = new Error(
         /Could not copy Chrome cookie database/i.test(stderr)
           ? 'Chrome is locking its cookie database. Close Google Chrome completely, then retry. (Or export cookies.txt via an extension and place it in stream-core/cookies.txt)'
-          : 'YouTube bot-check requires signed-in cookies. Close Chrome and retry so yt-dlp can read them, or import cookies.txt.'
+          : 'YouTube rejected this session (bot-check / expired cookies). Re-export cookies from Chrome (signed into youtube.com) and use Online → Import cookies.'
       );
       friendly.stderr = stderr;
       throw friendly;

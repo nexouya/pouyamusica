@@ -38,8 +38,11 @@ export function OnlineView() {
   const setQuery = useOnlineStore((s) => s.setQuery);
   const playSong = useOnlineStore((s) => s.playSong);
   const downloadSong = useOnlineStore((s) => s.downloadSong);
+  const importCookies = useOnlineStore((s) => s.importCookies);
   const playerPlaying = usePlayerStore((s) => s.playing);
   const [localQ, setLocalQ] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [cookieJson, setCookieJson] = useState("");
 
   useEffect(() => {
     void ensureCore();
@@ -79,6 +82,40 @@ export function OnlineView() {
             {statusLabel}
           </div>
         </div>
+
+        {!signedIn && (
+          <div className={styles.importRow}>
+            <button
+              type="button"
+              className={styles.importToggle}
+              onClick={() => setShowImport((v) => !v)}
+            >
+              {showImport ? "Hide cookie import" : "Import cookies (JSON)"}
+            </button>
+            {showImport && (
+              <div className={styles.importBox}>
+                <textarea
+                  className={styles.importArea}
+                  placeholder='Paste cookie JSON from EditThisCookie / "Get cookies.txt LOCALLY"…'
+                  value={cookieJson}
+                  onChange={(e) => setCookieJson(e.target.value)}
+                  rows={5}
+                />
+                <button
+                  type="button"
+                  className={styles.searchBtn}
+                  style={{ height: 40, alignSelf: "flex-end" }}
+                  onClick={() => {
+                    if (!cookieJson.trim()) return;
+                    void importCookies(cookieJson);
+                  }}
+                >
+                  Save cookies
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <form className={styles.searchForm} onSubmit={onSearch}>
           <div className={styles.searchBar}>
@@ -170,12 +207,24 @@ export function OnlineView() {
                       aria-label={isPlaying ? "Now playing" : `Play ${song.title}`}
                     >
                       {song.thumbnail ? (
-                        <img className={styles.thumb} src={song.thumbnail} alt="" />
-                      ) : (
-                        <span className={styles.thumbFallback}>
-                          <IconMusic size={18} />
-                        </span>
-                      )}
+                        <img
+                          className={styles.thumb}
+                          src={song.thumbnail}
+                          alt=""
+                          onError={(e) => {
+                            const el = e.currentTarget;
+                            el.style.display = "none";
+                            const fb = el.parentElement?.querySelector(`.${styles.thumbFallback}`) as HTMLElement | null;
+                            if (fb) fb.style.display = "flex";
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        className={styles.thumbFallback}
+                        style={{ display: song.thumbnail ? "none" : "flex" }}
+                      >
+                        <IconMusic size={18} />
+                      </span>
                       <span className={styles.playOverlay}>
                         {isPlaying ? <IconPause size={18} /> : <IconPlay size={18} />}
                       </span>
