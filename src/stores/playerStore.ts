@@ -66,10 +66,23 @@ async function pauseAllPaths() {
     /* ignore */
   }
   try {
+    const online = await import("./onlineStore");
+    if (online.useOnlineStore.getState().audio) {
+      online.useOnlineStore.getState().toggleOnlinePlay();
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
     await api.pause();
   } catch {
     /* ignore */
   }
+}
+
+function isHttpUrl(path?: string | null): boolean {
+  return !!path && /^https?:\/\//i.test(path);
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -137,6 +150,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playTrack: async (track, queue) => {
+    // Online (YouTube) tracks are owned by the HTMLAudio bridge, not the native engine.
+    if (track.id?.startsWith("yt:") || track.path?.includes("/play/") || isHttpUrl(track.path)) {
+      const online = await import("./onlineStore");
+      const videoId = track.id?.startsWith("yt:") ? track.id.slice(3) : null;
+      const song = {
+        videoId: videoId || "",
+        title: track.title,
+        artist: track.artist,
+        duration: track.duration_secs || null,
+        thumbnail: track.cover_data_url || null,
+      };
+      if (song.videoId) {
+        await online.useOnlineStore.getState().playSong(song as never);
+        if (queue?.length) set({ queue });
+        return;
+      }
+    }
     try {
       // Build play context. Explicit queue (playlist/liked) wins over library order.
       const context =

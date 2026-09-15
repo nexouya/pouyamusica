@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fsSync from 'node:fs';
+import fsPromises from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createAudioStreamer } from './audio.js';
 import { prefetchStream } from './providers/index.js';
@@ -165,7 +166,7 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
     req.query.download = '1';
 
     try {
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(trackTitle)}.mp3"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(trackTitle)}.m4a"`);
       await audio.serve(req, res, videoId);
     } catch (error) {
       console.warn(`download ${videoId} failed (${error.message})`);
@@ -174,6 +175,38 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
       } else {
         res.end();
       }
+    }
+  });
+
+  /**
+   * Export a local absolute path after yt-dlp has written the track to disk.
+   * The desktop app copies the file locally — avoids buffering multi-MB audio
+   * through a hand-rolled HTTP client.
+   */
+  app.get('/api/export/:videoId', async (req, res) => {
+    const { videoId } = req.params;
+    if (!VIDEO_ID.test(videoId)) {
+      return res.status(400).json({ ok: false, error: 'invalid video id' });
+    }
+    if (typeof audio.ensureCachedFile !== 'function') {
+      return res.status(501).json({ ok: false, error: 'yt-dlp export unavailable' });
+    }
+    try {
+      const file = await audio.ensureCachedFile(videoId);
+      const st = await fsPromises.stat(file);
+      const ext = path.extname(file).toLowerCase();
+      const mime =
+        ext === '.webm' ? 'audio/webm' : ext === '.mp3' ? 'audio/mpeg' : 'audio/mp4';
+      res.json({
+        ok: true,
+        path: file,
+        filename: path.basename(file),
+        bytes: st.size,
+        mime
+      });
+    } catch (error) {
+      console.error(`export ${videoId} failed:`, error.message);
+      res.status(502).json({ ok: false, error: error.message });
     }
   });
 

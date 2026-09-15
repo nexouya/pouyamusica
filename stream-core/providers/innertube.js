@@ -99,11 +99,17 @@ function fromListItem(item) {
   if (item.item_type && !PLAYABLE.has(item.item_type)) return null;
 
   const people = item.artists ?? item.authors ?? (item.author ? [item.author] : []);
+  // youtubei.js often mis-parses duration (picks the year "21" instead of "4:03").
+  // Treat sub-40s song durations as unreliable so the UI doesn't show fake lengths.
+  let duration = item.duration?.seconds ?? null;
+  if (typeof duration === 'number' && duration > 0 && duration < 40 && item.item_type === 'song') {
+    duration = null;
+  }
   return {
     videoId: item.id,
     title: (typeof item.title === 'string' ? item.title : item.title?.text) || 'Untitled',
     artist: people.map((person) => person?.name).filter(Boolean).join(', '),
-    duration: item.duration?.seconds ?? null,
+    duration,
     thumbnail: bestThumbnail(item, item.id)
   };
 }

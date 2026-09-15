@@ -32,15 +32,38 @@ const MIME_BY_EXT = {
 
 const MAX_CACHE_FILES = 40;
 
+function looksLikeHls(bodyText) {
+  return /^#EXTM3U/i.test(String(bodyText || '').trimStart());
+}
+
+function contentTypeIsHls(contentType) {
+  const ct = String(contentType || '').toLowerCase();
+  return (
+    ct.includes('mpegurl') ||
+    ct.includes('x-mpegURL'.toLowerCase()) ||
+    ct.includes('application/vnd.apple.mpegurl') ||
+    ct.includes('application/x-mpegurl')
+  );
+}
+
+function urlLooksLikeHls(url) {
+  const u = String(url || '');
+  return u.includes('.m3u8') || u.includes('/manifest/hls') || u.includes('hls_playlist');
+}
+
 export function createAudioStreamer({
   resolveStream,
   download,
   fetch: fetchImpl = fetch,
+  // Disk-first is the reliable path: googlevideo progressive URLs are
+  // pot/IP-bound and Node fetch often gets 403 even when yt-dlp works.
+  // 'auto' tries proxy once, then stays on yt-dlp after a hard failure.
   mode = process.env.STREAM_MODE || 'auto',
   cacheDir = path.join(os.tmpdir(), 'pouya-music-cache'),
   log = console
 }) {
-  // Once fetch has proven it can't reach the CDN, stop retrying it every play.
+  // Once fetch has proven it can't reach the CDN (or only serves HLS), stop
+  // retrying it every play.
   let fetchIsUsable = mode !== 'ytdlp';
   const inFlight = new Map();
 
@@ -102,6 +125,16 @@ export function createAudioStreamer({
   async function serveViaFetch(req, res, videoId) {
     const resolved = await resolveStream(videoId);
 
+    const url = resolved?.url ?? '';
+    if (
+      resolved?.mimeType === 'application/x-mpegURL' ||
+      urlLooksLikeHls(url)
+    ) {
+      const err = new Error('resolved stream is HLS — not playable via HTMLAudio');
+      err.code = 'HLS_UNPLAYABLE';
+      throw err;
+    }
+
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     const clientRange = req.headers.range;
@@ -111,8 +144,29 @@ export function createAudioStreamer({
       signal: controller.signal
     });
 
+    // 401/403 are pot/IP-bound CDN rejections — proxy will never work for
+    // this session, so switch permanently to the yt-dlp disk path.
+    if (upstream.status === 401 || upstream.status === 403) {
+      const err = new Error(`upstream returned ${upstream.status}`);
+      err.code = 'CDN_FORBIDDEN';
+      throw err;
+    }
     if (!upstream.ok && upstream.status !== 206) {
       throw new Error(`upstream returned ${upstream.status}`);
+    }
+
+    // Some googlevideo URLs return an m3u8 playlist with a 206. HTMLAudio
+    // cannot play that — abort before we pipe garbage into <audio>.
+    const upstreamType = upstream.headers.get('content-type') || '';
+    if (contentTypeIsHls(upstreamType)) {
+      try {
+        await upstream.body?.cancel();
+      } catch {
+        /* ignore */
+      }
+      const err = new Error('upstream served HLS playlist');
+      err.code = 'HLS_UNPLAYABLE';
+      throw err;
     }
 
     res.setHeader(
@@ -174,6 +228,13 @@ export function createAudioStreamer({
             log.error(
               `[audio] fetch cannot reach YouTube (${error.message}) — switching to yt-dlp for the rest of this session`
             );
+          } else if (error.code === 'CDN_FORBIDDEN') {
+            fetchIsUsable = false;
+            log.error(
+              `[audio] googlevideo rejected the proxy fetch (403/401) — switching to yt-dlp disk cache`
+            );
+          } else if (error.code === 'HLS_UNPLAYABLE') {
+            log.error(`[audio] ${videoId} resolved to HLS — serving via yt-dlp disk cache`);
           } else {
             log.error(`[audio] direct stream failed (${error.message}) — trying yt-dlp`);
           }
@@ -184,6 +245,11 @@ export function createAudioStreamer({
         throw new Error('yt-dlp is not available and direct stream failed');
       }
       return await serveFromDisk(req, res, videoId);
+    },
+
+    /** Absolute path of the on-disk track (downloads if needed). */
+    async ensureCachedFile(videoId) {
+      return cachedFile(videoId);
     },
 
     /** Clears the on-disk cache. */

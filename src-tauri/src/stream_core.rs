@@ -104,7 +104,7 @@ impl StreamCore {
 
         // Reuse a healthy server already listening (app restart, manual start).
         let url = format!("http://127.0.0.1:{port}/healthz");
-        if let Ok(resp) = ureq_get(&url) {
+        if let Ok(resp) = http_get_text(&url) {
             if resp.contains("\"ok\"") || resp.contains("ok") {
                 return Ok(port);
             }
@@ -137,8 +137,10 @@ impl StreamCore {
             .arg(&server)
             .env("PORT", port.to_string())
             .env("HOST", "127.0.0.1")
-            .env("STREAM_MODE", "auto")
-            .env("ENGINE", "ytdlp")
+            // Disk-first via yt-dlp: googlevideo progressive URLs are pot/IP
+            // bound and Node fetch gets 403. Proxy is opt-in via STREAM_MODE.
+            .env("STREAM_MODE", "ytdlp")
+            .env("ENGINE", "auto")
             .env("STRICT_YOUTUBE", "true")
             .env("BROWSER_COOKIES", "chrome")
             .stdout(Stdio::null())
@@ -159,7 +161,7 @@ impl StreamCore {
         let url = format!("{}/healthz", Self::base_url());
         for _ in 0..60 {
             std::thread::sleep(std::time::Duration::from_millis(150));
-            if let Ok(resp) = ureq_get(&url) {
+            if let Ok(resp) = http_get_text(&url) {
                 if resp.contains("ok") {
                     return Ok(port);
                 }
@@ -181,13 +183,13 @@ impl StreamCore {
 }
 
 pub fn probe_http_ok(url: &str) -> bool {
-    match ureq_get(url) {
+    match http_get_text(url) {
         Ok(body) => body.contains("ok"),
         Err(_) => false,
     }
 }
 
-fn ureq_get(url: &str) -> Result<String, String> {
+pub fn http_get_text(url: &str) -> Result<String, String> {
     // Minimal blocking HTTP GET without extra deps.
     use std::io::Read;
     let url = url.to_string();

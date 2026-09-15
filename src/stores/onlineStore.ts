@@ -50,6 +50,19 @@ let audioCtx: AudioContext | null = null;
 let mediaSource: MediaElementAudioSourceNode | null = null;
 let analyser: AnalyserNode | null = null;
 let smoothBands = new Float32Array(32);
+/** Monotonic id so a slower search never overwrites a newer one. */
+let searchSeq = 0;
+
+function mergeSongs(primary: YtSong[], extra: YtSong[] | null | undefined): YtSong[] {
+  const seen = new Set(primary.map((s) => s.videoId));
+  const out = primary.slice();
+  for (const s of extra || []) {
+    if (!s?.videoId || seen.has(s.videoId)) continue;
+    seen.add(s.videoId);
+    out.push(s);
+  }
+  return out;
+}
 
 function baseUrl(core: OnlineState["core"]): string {
   if (core?.running && core.base_url) return core.base_url.replace(/\/$/, "");
@@ -191,12 +204,9 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
           signedIn: !!ck.signedIn,
           cookieHint: ck.hint || null,
         });
-        if (!ck.signedIn) {
-          set({
-            searchError:
-              ck.hint ||
-              "Sign into youtube.com in Google Chrome (Default profile), then search again. Full tracks need signed-in cookies.",
-          });
+        // Sign-in is helpful but not required — do not block search UI.
+        if (!ck.signedIn && ck.hint) {
+          set({ cookieHint: ck.hint });
         }
       } catch {
         /* ignore */
@@ -216,43 +226,47 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     if (!ok || !core?.running) {
       set({
         searchError: get().coreError || "Stream core is not running. Install Node.js 18+.",
+        searching: false,
       });
       return;
     }
+
+    const seq = ++searchSeq;
     set({ searching: true, searchError: null, query });
+    const base = baseUrl(core);
+
     try {
-      const url = `${baseUrl(core)}/api/search?q=${encodeURIComponent(query)}&limit=25`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`search failed (${res.status}) ${body.slice(0, 120)}`);
-      }
-      const data = (await res.json()) as { songs?: YtSong[] };
-      let songs = data.songs || [];
-
-      // If thin, widen with a second query.
-      if (songs.length < 8) {
-        const url2 = `${baseUrl(core)}/api/search?q=${encodeURIComponent(query + " official audio")}&limit=25`;
-        const res2 = await fetch(url2).catch(() => null);
-        if (res2?.ok) {
-          const data2 = (await res2.json()) as { songs?: YtSong[] };
-          const seen = new Set(songs.map((s) => s.videoId));
-          for (const s of data2.songs || []) {
-            if (!seen.has(s.videoId)) {
-              seen.add(s.videoId);
-              songs.push(s);
-            }
+      // Parallel lanes: backend already fans out engines; frontend also asks
+      // two query shapes so thin first hits still fill quickly.
+      const [a, b] = await Promise.all([
+        fetch(`${base}/api/search?q=${encodeURIComponent(query)}&limit=25`).then(async (res) => {
+          if (!res.ok) {
+            const body = await res.text();
+            throw new Error(`search failed (${res.status}) ${body.slice(0, 140)}`);
           }
-        }
-      }
+          return (await res.json()) as { songs?: YtSong[] };
+        }),
+        fetch(`${base}/api/search?q=${encodeURIComponent(query + " official audio")}&limit=15`)
+          .then(async (res) => {
+            if (!res.ok) return null;
+            return (await res.json()) as { songs?: YtSong[] };
+          })
+          .catch(() => null),
+      ]);
 
+      if (seq !== searchSeq) return; // stale — a newer search already started
+
+      let songs = mergeSongs(a.songs || [], b?.songs);
       set({ results: songs, searching: false, searchError: null });
-      // Kick a light prefetch of the first result so Play can be near-instant.
-      if (songs[0]?.videoId) {
-        void fetch(`${baseUrl(core)}/stream/${songs[0].videoId}`).catch(() => undefined);
+
+      // Warm disk cache for the first few hits so Play/Download are near-instant.
+      // /api/export downloads once into the shared yt-dlp disk cache.
+      for (const song of songs.slice(0, 2)) {
+        void fetch(`${base}/api/export/${song.videoId}`).catch(() => undefined);
       }
     } catch (e) {
-      set({ searching: false, searchError: String(e), results: [] });
+      if (seq !== searchSeq) return;
+      set({ searching: false, searchError: String(e) });
     }
   },
 
@@ -264,6 +278,10 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     }
     const base = baseUrl(get().core);
     const track = ytToTrack(song, base);
+    const results = get().results;
+    const queue = results.length
+      ? results.map((s) => ytToTrack(s, base))
+      : [track];
 
     // Stop local / Sound Lab engines.
     try {
@@ -283,8 +301,15 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     }
 
     teardownGraph();
+    if (progressTimer) window.clearTimeout(progressTimer);
     if (audioEl) {
       try {
+        audioEl.onended = null;
+        audioEl.onerror = null;
+        audioEl.onplaying = null;
+        audioEl.onwaiting = null;
+        audioEl.oncanplay = null;
+        audioEl.onloadedmetadata = null;
         audioEl.pause();
         audioEl.removeAttribute("src");
         audioEl.load();
@@ -315,7 +340,7 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       position: 0,
       duration: parseDuration(song.duration),
       waveform: [],
-      queue: [track],
+      queue,
     });
     useUiStore.getState().setAccent("#FF4D6D");
 
@@ -336,6 +361,15 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       set({ playing: false });
       usePlayerStore.setState({ playing: false });
       for (let i = 0; i < 32; i++) smoothBands[i] = 0;
+      // Auto-advance within the online search queue.
+      const q = usePlayerStore.getState().queue;
+      const idx = q.findIndex((t) => t.id === track.id);
+      if (idx >= 0 && idx + 1 < q.length) {
+        const next = q[idx + 1];
+        const nextId = next.id?.startsWith("yt:") ? next.id.slice(3) : null;
+        const nextSong = results.find((s) => s.videoId === nextId);
+        if (nextSong) void get().playSong(nextSong);
+      }
     };
     el.onerror = () => {
       set({
@@ -349,11 +383,11 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     };
 
     const tickProgress = () => {
-      if (!audioEl) return;
-      set({ position: audioEl.currentTime, playing: !audioEl.paused });
+      if (!audioEl || audioEl !== el) return;
+      set({ position: el.currentTime, playing: !el.paused });
       usePlayerStore.setState({
-        position: audioEl.currentTime,
-        playing: !audioEl.paused,
+        position: el.currentTime,
+        playing: !el.paused,
       });
       progressTimer = window.setTimeout(tickProgress, 200);
     };
@@ -367,12 +401,22 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
           const done = () => {
             el.removeEventListener("canplay", done);
             el.removeEventListener("loadeddata", done);
+            el.removeEventListener("error", done);
             resolve();
           };
           el.addEventListener("canplay", done);
           el.addEventListener("loadeddata", done);
-          setTimeout(done, 8000);
+          el.addEventListener("error", done);
+          setTimeout(done, 12000);
         });
+      }
+      if (el.error) {
+        set({
+          playing: false,
+          buffering: false,
+          searchError: `Stream failed (media error ${el.error.code}). Retry, or import YouTube cookies if this keeps happening.`,
+        });
+        return;
       }
       await el.play();
       attachRealAnalyser(el);
@@ -423,21 +467,34 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
   downloadSong: async (song) => {
     const ok = await get().ensureCore();
     if (!ok) {
-      set({ downloadNote: "Stream core not running" });
+      set({ downloadNote: get().coreError || "Stream core not running" });
       return;
     }
-    set((s) => ({ downloading: { ...s.downloading, [song.videoId]: true }, downloadNote: null }));
+    set((s) => ({
+      downloading: { ...s.downloading, [song.videoId]: true },
+      downloadNote: null,
+    }));
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const dir = await open({ directory: true, multiple: false, title: "Save track to folder" });
+      const dir = await open({
+        directory: true,
+        multiple: false,
+        title: "Save track to folder",
+      });
       if (!dir || Array.isArray(dir)) {
-        set((s) => ({ downloading: { ...s.downloading, [song.videoId]: false } }));
+        set((s) => ({
+          downloading: { ...s.downloading, [song.videoId]: false },
+        }));
         return;
       }
+
+      set({ downloadNote: `Saving ${song.title}…` });
+      // download_yt_track asks stream-core /api/export (yt-dlp disk cache)
+      // then copies the file — no fragile multi-MB HTTP body in Rust.
       const path = await invoke<string>("download_yt_track", {
         videoId: song.videoId,
         title: `${song.artist ? song.artist + " - " : ""}${song.title}`,
-        destDir: dir,
+        destDir: String(dir),
       });
       set((s) => ({
         downloading: { ...s.downloading, [song.videoId]: false },

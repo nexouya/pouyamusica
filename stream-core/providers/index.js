@@ -35,26 +35,55 @@ function dedupePush(target, seen, items) {
 }
 
 /**
- * Strong search: merge YouTube Music + yt-dlp web search so results are deep
- * and not limited to one shelf type.
+ * Strong multi-lane search: yt-dlp + innertube + query variants in parallel.
+ * yt-dlp lanes merge first (correct durations); other engines only top-up.
  */
 export async function search(query, limit = 25) {
   const cap = Math.min(Math.max(Number(limit) || 25, 1), 40);
   const seen = new Set();
   const songs = [];
 
-  // Primary: provider chain (music-first).
-  try {
-    dedupePush(songs, seen, await chain.search(query, cap));
-  } catch (e) {
-    /* continue with fallbacks */
+  const ytdlpLanes = [];
+  if (ENGINE !== 'innertube' && ENGINE !== 'invidious') {
+    ytdlpLanes.push(() => ytdlp.search(query, cap));
+    ytdlpLanes.push(() => ytdlp.search(`${query} official audio`, Math.min(12, cap)));
+    ytdlpLanes.push(() => ytdlp.search(`${query} music video`, Math.min(8, cap)));
   }
 
-  // Only widen if very thin — extra yt-dlp calls are slow.
-  if (songs.length < Math.min(5, cap) && ENGINE !== 'innertube') {
+  const otherLanes = [];
+  if (ENGINE !== 'ytdlp' && ENGINE !== 'invidious') {
+    otherLanes.push(() => innertube.search(query, cap));
+  }
+  if (ENGINE !== 'ytdlp' && ENGINE !== 'innertube') {
+    otherLanes.push(() => invidious.search(query, Math.min(10, cap)));
+  }
+
+  const runAll = async (lanes) =>
+    Promise.allSettled(
+      lanes.map(async (run) => {
+        try {
+          return await run();
+        } catch {
+          return [];
+        }
+      })
+    );
+
+  // Fire every lane at once so nothing waits, but merge in priority order.
+  const [ytOut, otherOut] = await Promise.all([runAll(ytdlpLanes), runAll(otherLanes)]);
+
+  for (const r of ytOut) {
+    if (r.status === 'fulfilled') dedupePush(songs, seen, r.value);
+  }
+  for (const r of otherOut) {
+    if (r.status === 'fulfilled') dedupePush(songs, seen, r.value);
+  }
+
+  // If still thin, try the health-tracked chain as a safety net.
+  if (songs.length < Math.min(4, cap)) {
     try {
-      dedupePush(songs, seen, await ytdlp.search(query, cap));
-    } catch (e) {
+      dedupePush(songs, seen, await chain.search(query, cap));
+    } catch {
       /* ignore */
     }
   }
@@ -82,7 +111,12 @@ export async function resolveStream(videoId) {
 
   const job = (async () => {
     const value = await chain.resolveStream(videoId);
-    cache.set(videoId, { value, expires: Date.now() + TTL_MS });
+    // HLS playlists are not playable in HTMLAudio — don't cache them long.
+    const hls =
+      value?.mimeType === 'application/x-mpegURL' ||
+      String(value?.url || '').includes('.m3u8') ||
+      String(value?.url || '').includes('/manifest/hls');
+    cache.set(videoId, { value, expires: Date.now() + (hls ? 30_000 : TTL_MS) });
     inflight.delete(videoId);
     if (cache.size > 500) {
       for (const [key, entry] of cache) {

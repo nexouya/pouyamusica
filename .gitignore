@@ -46,3 +46,12 @@ standalone-build/
 !stream-core/bin/yt-dlp.exe
 stream-core/node_modules/
 
+# Local secrets — never commit
+stream-core/cookies.txt
+stream-core/cookies-user.txt
+stream-core/cookies-live.txt
+stream-core/user-cookies.json
+*.pem
+.env
+.env.*
+
