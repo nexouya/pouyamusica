@@ -111,6 +111,26 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         liked,
         volume: status?.volume ?? get().volume,
       });
+
+      // Restore last track metadata (paused, not autoplayed).
+      const lastPath = status?.path;
+      if (lastPath && !get().current) {
+        try {
+          const meta = await api.refreshTrack(lastPath);
+          if (meta) {
+            const waveform = await loadWaveform(meta.path);
+            set({
+              current: meta,
+              duration: meta.duration_secs || status?.duration_secs || 0,
+              position: status?.position_secs || 0,
+              playing: false,
+              waveform,
+            });
+          }
+        } catch {
+          /* ignore missing last track */
+        }
+      }
     } catch {
       /* ignore */
     }
@@ -154,7 +174,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
 
       if (get().volume <= 0) {
-        void get().applyVolume(0.8);
+        // Intentional mute is valid — do not stomp to 0.8.
       }
       const waveform = await loadWaveform(track.path);
 

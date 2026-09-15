@@ -44,20 +44,29 @@ pub fn retarget_watcher(app: &AppHandle, state: &AppState, root: std::path::Path
         let handle_inner = handle.clone();
         let flag = pending_flag.clone();
         let dirty_inner = dirty_flag.clone();
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(std::time::Duration::from_millis(350));
-                dirty_inner.store(false, std::sync::atomic::Ordering::SeqCst);
-                let app_state = handle_inner.state::<AppState>();
-                let root = app_state.music_root.lock().clone();
-                if let Err(e) = apply_scan(&handle_inner, &app_state, root) {
-                    eprintln!("watch rescan failed: {e}");
-                }
-                if !dirty_inner.load(std::sync::atomic::Ordering::SeqCst) {
-                    break;
-                }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(350));
+            dirty_inner.store(false, std::sync::atomic::Ordering::SeqCst);
+            let app_state = handle_inner.state::<AppState>();
+            let root = app_state.music_root.lock().clone();
+            if let Err(e) = apply_scan(&handle_inner, &app_state, root) {
+                eprintln!("watch rescan failed: {e}");
             }
+            // Clear pending, then re-arm if an event raced the dirty check.
             flag.store(false, std::sync::atomic::Ordering::SeqCst);
+            if dirty_inner.load(std::sync::atomic::Ordering::SeqCst)
+                && flag
+                    .compare_exchange(
+                        false,
+                        true,
+                        std::sync::atomic::Ordering::SeqCst,
+                        std::sync::atomic::Ordering::SeqCst,
+                    )
+                    .is_ok()
+            {
+                continue;
+            }
+            break;
         });
     }) {
         Ok(watcher) => {

@@ -183,13 +183,7 @@ pub fn play_track(
         msg
     })?;
     let order = play_order(&state);
-    let idx = order.iter().position(|p| p == &path).or_else(|| {
-        state
-            .library
-            .lock()
-            .iter()
-            .position(|t| t.path == path)
-    });
+    let idx = order.iter().position(|p| p == &path);
     *state.current_index.lock() = idx;
     state.persist();
     Ok(meta)
@@ -207,8 +201,11 @@ pub fn next_track(
     let mut idx = state.current_index.lock();
     let next = match *idx {
         Some(i) if i + 1 < order.len() => i + 1,
-        // End of queue: wrap only when the queue is the full library fallback.
-        Some(_) => 0,
+        // End of explicit queue: stop. Library fallback also stops at the end.
+        Some(_) => {
+            *idx = None;
+            return Ok(None);
+        }
         None => 0,
     };
     let path = order[next].clone();

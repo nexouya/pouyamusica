@@ -54,12 +54,17 @@ pub fn load_settings() -> AppSettings {
     AppSettings::default()
 }
 
-/// Atomic write: temp file in the same directory, then rename.
+/// Atomic write: unique temp file in the same directory, then rename.
 pub fn write_json_atomic(path: &std::path::Path, json: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
-    let tmp = path.with_extension("json.tmp");
+    let unique = format!(
+        "{}.tmp-{}",
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("settings.json"),
+        std::process::id()
+    );
+    let tmp = path.with_file_name(unique);
     std::fs::write(&tmp, json).with_context(|| format!("write {}", tmp.display()))?;
     std::fs::rename(&tmp, path).with_context(|| format!("rename into {}", path.display()))?;
     Ok(())

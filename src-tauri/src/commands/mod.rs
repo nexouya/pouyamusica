@@ -48,6 +48,15 @@ impl AppState {
         let volume = settings.volume.clamp(0.0, 1.0);
         // Do not fail startup if the audio thread is still probing devices.
         let _ = engine.set_volume(volume);
+        // Load last track paused so the UI can restore metadata on hydrate.
+        if let Some(last) = settings.last_track.clone() {
+            let p = PathBuf::from(&last);
+            if p.exists() {
+                if let Err(e) = engine.load_track(&last) {
+                    eprintln!("restore last_track failed: {e}");
+                }
+            }
+        }
         Ok(Self {
             engine,
             library: Mutex::new(Vec::new()),
