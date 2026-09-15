@@ -37,7 +37,16 @@ export type ViewId =
   | "liked"
   | "search"
   | "playlists"
-  | "soundlab";
+  | "soundlab"
+  | "online";
+
+export type YtSong = {
+  videoId: string;
+  title: string;
+  artist?: string;
+  duration?: string | number;
+  thumbnail?: string;
+};
 
 export type Playlist = {
   id: string;

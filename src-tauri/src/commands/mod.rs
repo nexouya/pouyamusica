@@ -1,12 +1,14 @@
 //! Domain IPC surface. Add a new command file here and register in lib.rs.
 
 pub mod library;
+pub mod online;
 pub mod playback;
 pub mod playlists;
 pub mod system;
 
 // Re-export all commands so `generate_handler!` can list `commands::foo`.
 pub use library::*;
+pub use online::*;
 pub use playback::*;
 pub use playlists::*;
 pub use system::*;

@@ -347,3 +347,23 @@ export function IconLogo({ size = 28, className }: IconProps) {
     />
   );
 }
+
+export function IconOnline({ size = 20, className, strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg {...base(size)} className={className} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5S14.4 18.4 12 20.5c-2.4-2.1-3.6-5.4-3.6-8.5S9.6 6.1 12 3.5Z" />
+    </svg>
+  );
+}
+
+export function IconDownload({ size = 16, className, strokeWidth = 1.75 }: IconProps) {
+  return (
+    <svg {...base(size)} className={className} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 4v10" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}

@@ -232,6 +232,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   togglePlay: async () => {
     const { current } = get();
     if (!current) return;
+    // Online (YouTube) tracks use the stream-core HTMLAudio bridge.
+    if (current.id?.startsWith("yt:") || current.path?.includes("/play/")) {
+      const online = await import("./onlineStore");
+      await online.useOnlineStore.getState().toggleOnlinePlay();
+      return;
+    }
     try {
       const lab = await soundLabWeb();
       const labState = lab.useSoundLabStore.getState();
@@ -324,6 +330,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   seek: async (secs) => {
     set({ position: secs });
+    const { current } = get();
+    if (current?.id?.startsWith("yt:") || current?.path?.includes("/play/")) {
+      const online = await import("./onlineStore");
+      online.useOnlineStore.getState().seekOnline(secs);
+      return;
+    }
     try {
       const lab = await soundLabWeb();
       if (lab.useSoundLabStore.getState().webPath) {
@@ -339,6 +351,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   applyVolume: async (level) => {
     const v = Math.min(1, Math.max(0, level));
     set({ volume: v });
+    const { current } = get();
+    if (current?.id?.startsWith("yt:") || current?.path?.includes("/play/")) {
+      const online = await import("./onlineStore");
+      const el = online.useOnlineStore.getState().audio;
+      if (el) el.volume = v;
+      return;
+    }
     try {
       // Always persist user volume, even when Sound Lab owns the audible path.
       await api.setVolume(v);

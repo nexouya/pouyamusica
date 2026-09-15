@@ -43,4 +43,6 @@ build_user_music_log.txt
 vite_test_*.txt
 standalone-build/
 *.exe
+!stream-core/bin/yt-dlp.exe
+stream-core/node_modules/
 

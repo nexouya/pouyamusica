@@ -2,6 +2,7 @@ mod audio;
 mod commands;
 mod library;
 mod settings;
+mod stream_core;
 
 use tauri::{Emitter, Manager};
 
@@ -23,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        .manage(stream_core::StreamCore::new())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -123,6 +125,10 @@ pub fn run() {
             commands::move_playlist_track,
             commands::move_playlist_track_by_path,
             commands::get_playlist,
+            commands::start_stream_core,
+            commands::stop_stream_core,
+            commands::get_stream_core_status,
+            commands::download_yt_track,
         ])
         .run(tauri::generate_context!())
     {

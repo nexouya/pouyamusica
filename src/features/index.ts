@@ -4,6 +4,7 @@ import {
   IconHeart,
   IconHome,
   IconLibrary,
+  IconOnline,
   IconSearch,
   IconSoundLab,
 } from "../components/icons/Icons";
@@ -14,6 +15,7 @@ import LikedView from "./liked";
 import SearchView from "./search";
 import PlaylistsView from "./playlists";
 import SoundLabView from "./soundlab";
+import OnlineView from "./online";
 
 /**
  * Feature bootstrap — import a feature package and registerFeature() it.
@@ -60,11 +62,19 @@ registerFeature({
 });
 
 registerFeature({
+  id: "online",
+  label: "Online",
+  Icon: IconOnline,
+  component: OnlineView,
+  order: 6,
+});
+
+registerFeature({
   id: "search",
   label: "Search",
   Icon: IconSearch,
   component: SearchView,
-  order: 6,
+  order: 7,
   hidden: true,
 });
 
@@ -73,7 +83,7 @@ registerFeature({
   label: "Sound Lab",
   Icon: IconSoundLab,
   component: SoundLabView,
-  order: 7,
+  order: 8,
 });
 
 export {};
