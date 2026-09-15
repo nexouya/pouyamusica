@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import styles from "./Online.module.css";
 import { useOnlineStore } from "../../stores/onlineStore";
@@ -11,7 +11,6 @@ import {
   IconPlay,
   IconSearch,
 } from "../../components/icons/Icons";
-import type { YtSong } from "../../types";
 
 function formatDur(d?: string | number) {
   if (typeof d === "number" && d > 0) {
@@ -34,7 +33,6 @@ export function OnlineView() {
   const downloadNote = useOnlineStore((s) => s.downloadNote);
   const buffering = useOnlineStore((s) => s.buffering);
   const signedIn = useOnlineStore((s) => s.signedIn);
-  const cookieHint = useOnlineStore((s) => s.cookieHint);
   const ensureCore = useOnlineStore((s) => s.ensureCore);
   const search = useOnlineStore((s) => s.search);
   const setQuery = useOnlineStore((s) => s.setQuery);
@@ -47,6 +45,15 @@ export function OnlineView() {
     void ensureCore();
   }, [ensureCore]);
 
+  const statusLabel = useMemo(() => {
+    if (!core?.running) return coreError ? "Offline" : "Starting…";
+    if (signedIn) return "Live · signed in";
+    return "Live · sign in needed";
+  }, [core, signedIn, coreError]);
+
+  const statusClass =
+    core?.running && signedIn ? styles.badgeOn : core?.running ? styles.badgeWarn : "";
+
   const onSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     const q = localQ.trim();
@@ -55,29 +62,34 @@ export function OnlineView() {
     void search(q);
   };
 
-  const play = (song: YtSong) => {
-    void playSong(song);
-  };
-
   return (
     <div className={styles.view}>
-      <header className={styles.header}>
-        <p className={styles.eyebrow}>Online · YouTube</p>
-        <h1 className={styles.title}>Stream & Download</h1>
-        <p className={styles.sub}>
-          Search the world’s music, stream instantly, or save to your disk. Uses your
-          signed-in Chrome cookies when available.
-        </p>
+      <section className={styles.hero}>
+        <div className={styles.heroTop}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>Online · YouTube Music</p>
+            <h1 className={styles.title}>Stream the world</h1>
+            <p className={styles.sub}>
+              Full-length tracks, instant search, clean downloads. Signed-in cookies keep
+              playback reliable — never 30-second previews.
+            </p>
+          </div>
+          <div className={`${styles.badge} ${statusClass}`}>
+            <span className={styles.badgePip} aria-hidden />
+            {statusLabel}
+          </div>
+        </div>
 
-        <form className={styles.searchRow} onSubmit={onSearch}>
+        <form className={styles.searchForm} onSubmit={onSearch}>
           <div className={styles.searchBar}>
-            <IconSearch size={16} className={styles.searchIcon} />
+            <IconSearch size={18} className={styles.searchIcon} />
             <input
               className={styles.input}
               value={localQ}
               onChange={(e) => setLocalQ(e.target.value)}
-              placeholder="Search songs, artists, mixes…"
+              placeholder="Artist, song, mix…"
               autoFocus
+              aria-label="Search YouTube Music"
             />
           </div>
           <button type="submit" className={styles.searchBtn} disabled={searching}>
@@ -85,119 +97,123 @@ export function OnlineView() {
           </button>
         </form>
 
-        <div className={styles.coreRow}>
-          <span
-            className={styles.corePip}
-            data-on={core?.running && signedIn ? "true" : "false"}
-            aria-hidden
-          />
-          <span className={styles.coreText}>
-            {core?.running
-              ? signedIn
-                ? `Stream core live · signed-in cookies OK · port ${core.port}`
-                : `Stream core live · NOT signed in — ${cookieHint || "open Chrome and sign into youtube.com"}`
-              : coreError
-                ? coreError
-                : "Starting stream core…"}
-          </span>
-        </div>
-        {searchError && (
-          <p className={styles.error}>
-            {searchError}
-            {/Chrome|cookies|bot-check|Sign in/i.test(searchError) && (
-              <>
-                {" "}
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() => void search()}
-                >
-                  Retry
-                </button>
-              </>
+        {(searchError || downloadNote || (buffering && currentId)) && (
+          <div className={styles.notes}>
+            {buffering && currentId && (
+              <p className={styles.note}>
+                Buffering full track… first play takes a few seconds.
+              </p>
             )}
-          </p>
+            {downloadNote && <p className={styles.note}>{downloadNote}</p>}
+            {searchError && (
+              <p className={styles.error}>
+                {searchError}
+                {/Chrome|cookies|bot-check|Sign in|Node/i.test(searchError) && (
+                  <button type="button" className={styles.retryBtn} onClick={() => void search()}>
+                    Retry
+                  </button>
+                )}
+              </p>
+            )}
+          </div>
         )}
-        {downloadNote && <p className={styles.note}>{downloadNote}</p>}
-        {buffering && currentId && (
-          <p className={styles.note}>Buffering stream… first play can take a few seconds.</p>
-        )}
-      </header>
+      </section>
 
-      <div className={styles.list}>
+      <div className={styles.results}>
         {searching && (
           <div className={styles.loading}>
             <div className={styles.loadingPulse} />
             <p>Searching YouTube Music…</p>
           </div>
         )}
+
         {!searching && !results.length && (
           <div className={styles.empty}>
-            <IconOnline size={28} />
+            <div className={styles.emptyIcon}>
+              <IconOnline size={26} />
+            </div>
             <h3>Find something to play</h3>
-            <p>Type an artist or track name above. First result plays instantly.</p>
+            <p>
+              Search an artist or track. First result starts the full song — then it stays
+              cached for instant replay.
+            </p>
           </div>
         )}
-        {results.map((song, i) => {
-          const active = currentId === song.videoId;
-          const isPlaying = active && playing && playerPlaying;
-          return (
-            <motion.div
-              key={song.videoId}
-              className={`${styles.row} ${active ? styles.rowActive : ""}`}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(i, 8) * 0.03, type: "spring", stiffness: 360, damping: 28 }}
-            >
-              <button
-                type="button"
-                className={styles.playBtn}
-                onClick={() => play(song)}
-                aria-label={isPlaying ? "Playing" : "Play"}
-              >
-                {song.thumbnail ? (
-                  <img src={song.thumbnail} alt="" className={styles.thumb} />
-                ) : (
-                  <span className={styles.thumbFallback}>
-                    <IconMusic size={16} />
-                  </span>
-                )}
-                <span className={styles.playOverlay}>
-                  {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
-                </span>
-              </button>
 
-              <div className={styles.meta}>
-                <div className={styles.songTitle}>{song.title}</div>
-                <div className={styles.songArtist}>
-                  {song.artist || "YouTube"}
-                  {formatDur(song.duration) ? ` · ${formatDur(song.duration)}` : ""}
-                </div>
-              </div>
+        {!searching && results.length > 0 && (
+          <>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>Results</h2>
+              <span className={styles.sectionCount}>{results.length} tracks</span>
+            </div>
+            <div className={styles.grid}>
+              {results.map((song, i) => {
+                const active = currentId === song.videoId;
+                const isPlaying = active && playing && playerPlaying;
+                return (
+                  <motion.div
+                    key={song.videoId}
+                    className={`${styles.row} ${active ? styles.rowActive : ""}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      delay: Math.min(i, 10) * 0.028,
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 30,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={styles.artBtn}
+                      onClick={() => void playSong(song)}
+                      aria-label={isPlaying ? "Now playing" : `Play ${song.title}`}
+                    >
+                      {song.thumbnail ? (
+                        <img className={styles.thumb} src={song.thumbnail} alt="" />
+                      ) : (
+                        <span className={styles.thumbFallback}>
+                          <IconMusic size={18} />
+                        </span>
+                      )}
+                      <span className={styles.playOverlay}>
+                        {isPlaying ? <IconPause size={18} /> : <IconPlay size={18} />}
+                      </span>
+                    </button>
 
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  onClick={() => play(song)}
-                  aria-label="Play"
-                >
-                  <IconPlay size={14} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.actionBtn}
-                  disabled={!!downloading[song.videoId]}
-                  onClick={() => void downloadSong(song)}
-                  aria-label="Download"
-                  title="Download MP3"
-                >
-                  <IconDownload size={14} />
-                </button>
-              </div>
-            </motion.div>
-          );
-        })}
+                    <div className={styles.meta}>
+                      <div className={styles.songTitle}>{song.title}</div>
+                      <div className={styles.songArtist}>{song.artist || "YouTube"}</div>
+                    </div>
+
+                    <span className={styles.songDur}>{formatDur(song.duration)}</span>
+
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        onClick={() => void playSong(song)}
+                        aria-label="Play"
+                      >
+                        <IconPlay size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.actionBtn}
+                        disabled={!!downloading[song.videoId]}
+                        onClick={() => void downloadSong(song)}
+                        aria-label="Download"
+                        title="Save MP3"
+                      >
+                        <IconDownload size={15} />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

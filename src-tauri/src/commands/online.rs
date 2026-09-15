@@ -13,25 +13,30 @@ pub struct StreamCoreStatus {
 }
 
 fn node_available() -> bool {
-    for name in ["node", "node.exe"] {
-        if let Ok(out) = std::process::Command::new(name).arg("--version").output() {
-            if out.status.success() {
-                return true;
-            }
-        }
+    StreamCore::find_node_public().is_some()
+}
+
+fn probe_health(port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{port}/healthz");
+    crate::stream_core::probe_http_ok(&url)
+}
+
+fn status_for(core: &StreamCore) -> StreamCoreStatus {
+    let port = StreamCore::port();
+    // Trust the HTTP endpoint — a reused/orphan server counts as running.
+    let running = core.is_running() || probe_health(port);
+    StreamCoreStatus {
+        running,
+        port,
+        base_url: StreamCore::base_url(),
+        node_ok: node_available(),
     }
-    PathBuf::from(r"C:\Program Files\nodejs\node.exe").exists()
 }
 
 #[tauri::command]
 pub fn start_stream_core(core: State<'_, StreamCore>) -> Result<StreamCoreStatus, String> {
-    let port = core.start(0)?;
-    Ok(StreamCoreStatus {
-        running: core.is_running(),
-        port,
-        base_url: crate::stream_core::StreamCore::base_url(),
-        node_ok: node_available(),
-    })
+    let _port = core.start(0)?;
+    Ok(status_for(&core))
 }
 
 #[tauri::command]
@@ -39,20 +44,15 @@ pub fn stop_stream_core(core: State<'_, StreamCore>) -> StreamCoreStatus {
     core.stop();
     StreamCoreStatus {
         running: false,
-        port: crate::stream_core::StreamCore::port(),
-        base_url: crate::stream_core::StreamCore::base_url(),
+        port: StreamCore::port(),
+        base_url: StreamCore::base_url(),
         node_ok: node_available(),
     }
 }
 
 #[tauri::command]
 pub fn get_stream_core_status(core: State<'_, StreamCore>) -> StreamCoreStatus {
-    StreamCoreStatus {
-        running: core.is_running(),
-        port: crate::stream_core::StreamCore::port(),
-        base_url: crate::stream_core::StreamCore::base_url(),
-        node_ok: node_available(),
-    }
+    status_for(&core)
 }
 
 /// Download a YouTube track via the local stream core into a target folder.

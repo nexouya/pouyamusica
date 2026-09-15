@@ -1,7 +1,7 @@
 //! Local YouTube stream core (haste-strim) sidecar lifecycle.
 
 use parking_lot::Mutex;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -49,25 +49,34 @@ impl StreamCore {
         None
     }
 
+    pub fn find_node_public() -> Option<String> {
+        Self::find_node()
+    }
+
     fn find_node() -> Option<String> {
-        if let Ok(p) = std::env::var("NODE_PATH") {
-            let _ = p;
+        // Prefer absolute paths — GUI apps often lack a full shell PATH.
+        let home = dirs::home_dir().unwrap_or_default();
+        let mut candidates: Vec<PathBuf> = vec![
+            PathBuf::from(r"C:\Program Files\nodejs\node.exe"),
+            PathBuf::from(r"C:\Program Files (x86)\nodejs\node.exe"),
+            home.join(".volta").join("bin").join("node.exe"),
+            home.join("scoop").join("apps").join("nodejs").join("current").join("node.exe"),
+            home.join("AppData").join("Roaming").join("nvm").join("node.exe"),
+            PathBuf::from(r"C:\ProgramData\nvm\nodejs\node.exe"),
+        ];
+        if let Ok(nvm_home) = std::env::var("NVM_HOME") {
+            candidates.insert(0, PathBuf::from(nvm_home).join("node.exe"));
+        }
+        for c in &candidates {
+            if c.exists() {
+                return Some(c.to_string_lossy().to_string());
+            }
         }
         for name in ["node", "node.exe"] {
             if let Ok(out) = Command::new(name).arg("--version").output() {
                 if out.status.success() {
                     return Some(name.to_string());
                 }
-            }
-        }
-        // Common Windows install locations
-        let candidates = [
-            r"C:\Program Files\nodejs\node.exe",
-            r"C:\Program Files (x86)\nodejs\node.exe",
-        ];
-        for c in candidates {
-            if Path::new(c).exists() {
-                return Some(c.to_string());
             }
         }
         None
@@ -167,6 +176,13 @@ impl StreamCore {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+pub fn probe_http_ok(url: &str) -> bool {
+    match ureq_get(url) {
+        Ok(body) => body.contains("ok"),
+        Err(_) => false,
     }
 }
 
