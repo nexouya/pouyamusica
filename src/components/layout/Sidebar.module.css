@@ -1,0 +1,273 @@
+.sidebar {
+  width: 240px;
+  height: 100%;
+  margin: 0 0 8px 8px;
+  flex-shrink: 0;
+  padding: 14px 12px 12px;
+  gap: 0;
+  z-index: 20;
+  border-radius: 16px !important;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandName {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.brandSub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  margin-bottom: 16px;
+  padding: 0 14px 0 38px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.search {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.search::placeholder {
+  color: var(--text-tertiary);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.navItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  background: transparent;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.navItem:hover {
+  color: var(--text-primary);
+}
+
+.navPill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.22),
+    0 4px 16px rgba(var(--accent-dynamic-rgb), 0.1);
+}
+
+.navLabelOn {
+  color: var(--text-primary);
+}
+
+.logoSpin {
+  display: inline-flex;
+  transform-origin: center;
+}
+
+.navIcon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  font-size: var(--text-nav);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sectionLabel {
+  font-size: var(--text-nav);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+
+.playlistScroll {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+  min-height: 0;
+}
+
+.playlistScrollCapped {
+  flex: 0 1 auto;
+  max-height: 140px;
+  margin-bottom: 12px;
+}
+
+.thumbIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.playlistItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  text-align: left;
+  color: var(--text-secondary);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.playlistItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.playlistActive {
+  background: rgba(var(--accent-dynamic-rgb), 0.12);
+  color: var(--text-primary);
+}
+
+.thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.playlistText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.playlistTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlistArtist {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1180px) {
+  .sidebar {
+    width: 76px;
+    padding: 12px 10px 10px;
+  }
+  .brand {
+    justify-content: center;
+    padding: 0;
+    height: 48px;
+  }
+  .brandText,
+  .navLabel,
+  .sectionLabel,
+  .playlistText {
+    display: none;
+  }
+  .searchWrap {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0 auto 14px;
+    justify-content: center;
+  }
+  .searchIcon {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .search {
+    display: none;
+  }
+  .navItem {
+    justify-content: center;
+    padding: 0;
+    width: 44px;
+    margin: 0 auto;
+  }
+  .playlistItem {
+    justify-content: center;
+    padding: 6px;
+  }
+  .playlistScroll {
+    align-items: center;
+  }
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 64px;
+    padding: 10px 6px;
+  }
+}

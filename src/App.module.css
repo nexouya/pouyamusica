@@ -1,0 +1,55 @@
+.app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 0%, rgba(18, 22, 31, 0.95) 0%, rgba(10, 13, 18, 0.98) 70%),
+    var(--bg-base);
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 1;
+}
+
+.contentRow {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding-top: 8px;
+  padding-bottom: 0;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  margin: 0 8px 8px 8px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(12, 15, 22, 0.4);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.mainScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.viewHost {
+  height: 100%;
+  min-height: 0;
+  will-change: opacity, transform;
+}
