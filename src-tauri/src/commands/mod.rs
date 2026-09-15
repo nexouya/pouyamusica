@@ -11,8 +11,10 @@ pub use playback::*;
 pub use playlists::*;
 pub use system::*;
 
+use notify::RecommendedWatcher;
 use parking_lot::Mutex;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::audio::AudioEngine;
 use crate::library::scanner::TrackMeta;
@@ -25,6 +27,12 @@ pub struct AppState {
     pub current_index: Mutex<Option<usize>>,
     pub music_root: Mutex<PathBuf>,
     pub liked: Mutex<Vec<String>>,
+    /// User-facing volume (survives Sound Lab mute handoff). 0 is intentional mute.
+    pub user_volume: Mutex<f32>,
+    /// Incremented on every library scan request; stale results are discarded.
+    pub scan_gen: AtomicU64,
+    /// Owned folder watcher — replaced when music_root changes.
+    pub watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
 impl AppState {
@@ -37,8 +45,9 @@ impl AppState {
             .filter(|p| p.exists())
             .unwrap_or_else(crate::library::scanner::default_music_dir);
         let engine = AudioEngine::start()?;
+        let volume = settings.volume.clamp(0.0, 1.0);
         // Do not fail startup if the audio thread is still probing devices.
-        let _ = engine.set_volume(settings.volume.clamp(0.0, 1.0));
+        let _ = engine.set_volume(volume);
         Ok(Self {
             engine,
             library: Mutex::new(Vec::new()),
@@ -46,14 +55,33 @@ impl AppState {
             current_index: Mutex::new(None),
             music_root: Mutex::new(root),
             liked: Mutex::new(settings.liked),
+            user_volume: Mutex::new(volume),
+            scan_gen: AtomicU64::new(0),
+            watcher: Mutex::new(None),
         })
+    }
+
+    pub fn next_scan_gen(&self) -> u64 {
+        self.scan_gen.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    pub fn is_current_scan_gen(&self, gen: u64) -> bool {
+        self.scan_gen.load(Ordering::SeqCst) == gen
+    }
+
+    pub fn set_user_volume(&self, v: f32) {
+        *self.user_volume.lock() = v.clamp(0.0, 1.0);
+    }
+
+    pub fn user_volume(&self) -> f32 {
+        *self.user_volume.lock()
     }
 
     pub fn persist(&self) {
         let settings = AppSettings {
             liked: self.liked.lock().clone(),
             music_root: Some(self.music_root.lock().to_string_lossy().to_string()),
-            volume: self.engine.volume(),
+            volume: self.user_volume(),
             last_track: self
                 .engine
                 .current_path()

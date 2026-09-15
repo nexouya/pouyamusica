@@ -63,6 +63,16 @@ pub fn move_playlist_track(id: String, from: usize, to: usize) -> Result<Playlis
     playlists::move_track(&id, from, to).map_err(|e| e.to_string())
 }
 
+/// Move by path so UI indices stay valid when some playlist tracks are missing from the library.
+#[tauri::command]
+pub fn move_playlist_track_by_path(
+    id: String,
+    path: String,
+    to: usize,
+) -> Result<Playlist, String> {
+    playlists::move_track_by_path(&id, &path, to).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn get_playlist(id: String) -> Option<Playlist> {
     playlists::get_playlist(&id)

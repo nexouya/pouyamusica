@@ -55,5 +55,7 @@ export const api = {
     invoke<Playlist>("remove_track_from_playlist", { id, path }),
   movePlaylistTrack: (id: string, from: number, to: number) =>
     invoke<Playlist>("move_playlist_track", { id, from, to }),
+  movePlaylistTrackByPath: (id: string, path: string, to: number) =>
+    invoke<Playlist>("move_playlist_track_by_path", { id, path, to }),
   getPlaylist: (id: string) => invoke<Playlist | null>("get_playlist", { id }),
 };

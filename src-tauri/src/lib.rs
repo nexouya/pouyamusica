@@ -3,13 +3,11 @@ mod commands;
 mod library;
 mod settings;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 use crate::audio::shared::FftFrame;
 use crate::commands::AppState;
-use crate::library::scanner::{default_music_dir, scan_folder, watch_folder};
+use crate::library::scanner::{default_music_dir, scan_folder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,7 +43,8 @@ pub fn run() {
                 let playing = app_state.engine.is_playing();
                 let pos = app_state.engine.position_secs();
                 let dur = app_state.engine.duration_secs();
-                let volume = app_state.engine.volume();
+                // Report user-facing volume, not the Sound Lab-muted engine gain.
+                let volume = app_state.user_volume();
                 let ended = app_state.engine.take_ended();
                 let _ = handle_progress.emit(
                     "playback-progress",
@@ -76,35 +75,15 @@ pub fn run() {
                     }
                 };
                 if let Ok(tracks) = scan_folder(&root) {
-                    *app_state.library.lock() = tracks.clone();
-                    let _ = handle_scan.emit("library-updated", tracks);
+                    let gen = app_state.next_scan_gen();
+                    if app_state.is_current_scan_gen(gen) {
+                        *app_state.library.lock() = tracks.clone();
+                        let _ = handle_scan.emit("library-updated", tracks);
+                    }
                 }
 
-                // Live folder watch → debounced library refresh
-                let handle_watch = handle_scan.clone();
-                let pending = Arc::new(AtomicBool::new(false));
-                let pending_flag = pending.clone();
-                let root_watch = root.clone();
-                if let Ok(_watcher) = watch_folder(root_watch, move |_path| {
-                    if pending_flag.swap(true, Ordering::SeqCst) {
-                        return;
-                    }
-                    let handle_inner = handle_watch.clone();
-                    let flag = pending_flag.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(350));
-                        let app_state = handle_inner.state::<AppState>();
-                        let root = app_state.music_root.lock().clone();
-                        if let Ok(tracks) = scan_folder(&root) {
-                            *app_state.library.lock() = tracks.clone();
-                            let _ = handle_inner.emit("library-updated", tracks);
-                        }
-                        flag.store(false, Ordering::SeqCst);
-                    });
-                }) {
-                    // Keep watcher alive for process lifetime
-                    std::mem::forget(_watcher);
-                }
+                // Live folder watch owned by AppState so set_music_root can retarget.
+                commands::retarget_watcher(&handle_scan, &app_state, root);
             });
 
             Ok(())
@@ -142,6 +121,8 @@ pub fn run() {
             commands::remove_track_from_playlist,
             commands::reorder_playlist,
             commands::move_playlist_track,
+            commands::move_playlist_track_by_path,
+            commands::get_playlist,
         ])
         .run(tauri::generate_context!())
     {
@@ -192,10 +173,15 @@ mod tests {
     }
 
     #[test]
-    fn test_app_state() {
-        match crate::commands::AppState::new() {
-            Ok(_) => println!("AppState initialized successfully"),
-            Err(e) => panic!("AppState init FAILED: {:?}", e),
-        }
+    fn settings_roundtrip_allows_mute() {
+        let s = crate::settings::AppSettings {
+            liked: vec!["a".into()],
+            music_root: None,
+            volume: 0.0,
+            last_track: None,
+        };
+        let json = serde_json::to_string_pretty(&s).unwrap();
+        let back: crate::settings::AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.volume, 0.0);
     }
 }

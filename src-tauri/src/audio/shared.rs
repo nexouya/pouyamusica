@@ -16,6 +16,7 @@ struct Inner {
     ended: AtomicBool,
     #[allow(dead_code)]
     position_secs: AtomicU64,
+    /// f64 bits (not whole seconds)
     duration_secs: AtomicU64,
     capacity: usize,
 }
@@ -102,23 +103,22 @@ impl SharedAudioState {
     pub fn set_position_secs(&self, secs: f64) {
         self.inner
             .position_secs
-            .store(secs.max(0.0) as u64, Ordering::Relaxed);
+            .store(secs.max(0.0).to_bits(), Ordering::Relaxed);
     }
 
     #[allow(dead_code)]
     pub fn position_secs_f64(&self) -> f64 {
-        // Store as whole seconds only for atomic simplicity; high-res progress is sent separately.
-        self.inner.position_secs.load(Ordering::Relaxed) as f64
+        f64::from_bits(self.inner.position_secs.load(Ordering::Relaxed))
     }
 
     pub fn set_duration_secs(&self, secs: f64) {
         self.inner
             .duration_secs
-            .store(secs.max(0.0) as u64, Ordering::Relaxed);
+            .store(secs.max(0.0).to_bits(), Ordering::Relaxed);
     }
 
     pub fn duration_secs(&self) -> f64 {
-        self.inner.duration_secs.load(Ordering::Relaxed) as f64
+        f64::from_bits(self.inner.duration_secs.load(Ordering::Relaxed))
     }
 
     pub fn clear(&self) {

@@ -29,7 +29,7 @@ export function LikedView() {
             <button
               type="button"
               className={styles.playAllBtn}
-              onClick={() => void playTrack(only[0])}
+              onClick={() => void playTrack(only[0], only)}
             >
               <IconPlay size={14} /> Play All
             </button>
@@ -46,7 +46,7 @@ export function LikedView() {
         ) : (
           <div className={styles.list}>
             {only.map((t, i) => (
-              <TrackRow key={t.id} track={t} index={i} />
+              <TrackRow key={t.id} track={t} index={i} queue={only} />
             ))}
           </div>
         )}

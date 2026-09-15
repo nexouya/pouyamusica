@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
 use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -16,12 +17,18 @@ pub enum AudioCmd {
         path: PathBuf,
         ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>,
     },
-    Play,
+    Play {
+        ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>,
+    },
     Pause,
-    Toggle,
-    #[allow(dead_code)]
+    Toggle {
+        ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>,
+    },
     Stop,
-    Seek(f64),
+    Seek {
+        secs: f64,
+        ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>,
+    },
     Volume(f32),
     #[allow(dead_code)]
     Shutdown,
@@ -36,6 +43,8 @@ pub struct AudioEngine {
     volume: Arc<Mutex<f32>>,
     position: Arc<Mutex<f64>>,
     playing: Arc<Mutex<bool>>,
+    #[allow(dead_code)]
+    device_ok: Arc<AtomicBool>,
 }
 
 struct EngineCore {
@@ -107,7 +116,12 @@ impl EngineCore {
         Ok(())
     }
 
-    fn apply_pause(&mut self, state: &SharedAudioState, position: &Arc<Mutex<f64>>, playing: &Arc<Mutex<bool>>) {
+    fn apply_pause(
+        &mut self,
+        state: &SharedAudioState,
+        position: &Arc<Mutex<f64>>,
+        playing: &Arc<Mutex<bool>>,
+    ) {
         self.sink.pause();
         if let Some(start) = self.started_at.take() {
             self.seek_offset += start.elapsed().as_secs_f64();
@@ -118,19 +132,27 @@ impl EngineCore {
         *position.lock() = self.seek_offset;
     }
 
-    fn apply_play(&mut self, state: &SharedAudioState, playing: &Arc<Mutex<bool>>) {
+    fn apply_play(&mut self, state: &SharedAudioState, playing: &Arc<Mutex<bool>>) -> Result<()> {
         if self.sink.empty() && self.path.is_some() {
-            let _ = self.rebuild_from_with_state(0.0, true, state);
+            self.rebuild_from_with_state(0.0, true, state)?;
             *playing.lock() = self.playing;
-            return;
+            return Ok(());
         }
-        if !self.sink.empty() {
-            self.sink.play();
-            self.playing = true;
-            self.started_at = Some(Instant::now());
-            state.set_playing(true);
-            *playing.lock() = true;
+        if self.sink.empty() {
+            return Err(anyhow!("no track loaded"));
         }
+        self.sink.play();
+        self.playing = true;
+        self.started_at = Some(Instant::now());
+        state.set_playing(true);
+        *playing.lock() = true;
+        Ok(())
+    }
+}
+
+fn send_ack(ack: Option<crossbeam_channel::Sender<std::result::Result<(), String>>>, r: std::result::Result<(), String>) {
+    if let Some(ack) = ack {
+        let _ = ack.send(r);
     }
 }
 
@@ -142,12 +164,14 @@ impl AudioEngine {
         let volume = Arc::new(Mutex::new(0.8));
         let position = Arc::new(Mutex::new(0.0));
         let playing = Arc::new(Mutex::new(false));
+        let device_ok = Arc::new(AtomicBool::new(false));
 
         let state_thread = state.clone();
         let path_thread = current_path.clone();
         let volume_thread = volume.clone();
         let position_thread = position.clone();
         let playing_thread = playing.clone();
+        let device_thread = device_ok.clone();
 
         std::thread::Builder::new()
             .name("pouya-audio".into())
@@ -155,8 +179,12 @@ impl AudioEngine {
                 // Stay alive even when no output device is available so the UI
                 // process never dies; retry the device every few seconds.
                 let mut core: Option<EngineCore> = match EngineCore::new() {
-                    Ok(c) => Some(c),
+                    Ok(c) => {
+                        device_thread.store(true, Ordering::SeqCst);
+                        Some(c)
+                    }
                     Err(e) => {
+                        device_thread.store(false, Ordering::SeqCst);
                         eprintln!("audio device unavailable: {e:#}");
                         None
                     }
@@ -187,7 +215,18 @@ impl AudioEngine {
                                         let vol = *volume_thread.lock();
                                         recovered.volume = vol;
                                         recovered.sink.set_volume(vol);
+                                        // Reload the last track so play works after recovery.
+                                        if let Some(path) = path_thread.lock().clone() {
+                                            recovered.path = Some(path);
+                                            let pos = *position_thread.lock();
+                                            if let Err(e) = recovered
+                                                .rebuild_from_with_state(pos, false, &state_thread)
+                                            {
+                                                eprintln!("device recovery reload failed: {e:#}");
+                                            }
+                                        }
                                         core = Some(recovered);
+                                        device_thread.store(true, Ordering::SeqCst);
                                         eprintln!("audio device recovered");
                                     }
                                     Err(e) => {
@@ -207,13 +246,13 @@ impl AudioEngine {
                                 *volume_thread.lock() = v.clamp(0.0, 1.0);
                             }
                             AudioCmd::Load { ack, .. } => {
-                                if let Some(ack) = ack {
-                                    let _ = ack.send(Err("audio device unavailable".into()));
-                                }
+                                send_ack(ack, Err("audio device unavailable".into()));
                             }
-                            AudioCmd::Play | AudioCmd::Pause | AudioCmd::Toggle => {}
+                            AudioCmd::Play { ack } | AudioCmd::Toggle { ack } | AudioCmd::Seek { ack, .. } => {
+                                send_ack(ack, Err("audio device unavailable".into()));
+                            }
+                            AudioCmd::Pause | AudioCmd::Stop => {}
                             AudioCmd::Shutdown => break,
-                            _ => {}
                         }
                         continue;
                     };
@@ -235,22 +274,26 @@ impl AudioEngine {
                             if let Err(ref e) = load_result {
                                 eprintln!("load error: {e}");
                             }
-                            if let Some(ack) = ack {
-                                let _ = ack.send(load_result);
-                            }
+                            send_ack(ack, load_result);
                         }
-                        AudioCmd::Play => {
-                            core.apply_play(&state_thread, &playing_thread);
+                        AudioCmd::Play { ack } => {
+                            let r = core
+                                .apply_play(&state_thread, &playing_thread)
+                                .map_err(|e| e.to_string());
+                            send_ack(ack, r);
                         }
                         AudioCmd::Pause => {
                             core.apply_pause(&state_thread, &position_thread, &playing_thread);
                         }
-                        AudioCmd::Toggle => {
-                            if core.playing {
+                        AudioCmd::Toggle { ack } => {
+                            let r = if core.playing {
                                 core.apply_pause(&state_thread, &position_thread, &playing_thread);
+                                Ok(())
                             } else {
-                                core.apply_play(&state_thread, &playing_thread);
-                            }
+                                core.apply_play(&state_thread, &playing_thread)
+                                    .map_err(|e| e.to_string())
+                            };
+                            send_ack(ack, r);
                         }
                         AudioCmd::Stop => {
                             core.sink.stop();
@@ -261,14 +304,19 @@ impl AudioEngine {
                             *playing_thread.lock() = false;
                             *position_thread.lock() = 0.0;
                         }
-                        AudioCmd::Seek(secs) => {
+                        AudioCmd::Seek { secs, ack } => {
                             let autoplay = core.playing;
-                            if let Err(e) =
-                                core.rebuild_from_with_state(secs, autoplay, &state_thread)
-                            {
-                                eprintln!("seek error: {e:#}");
+                            let dur = state_thread.duration_secs();
+                            // Clamp so dragging past EOF does not immediately end the track.
+                            let max = if dur > 0.5 { (dur - 0.05).max(0.0) } else { dur.max(0.0) };
+                            let secs = if dur > 0.0 { secs.clamp(0.0, max) } else { secs.max(0.0) };
+                            let r = core
+                                .rebuild_from_with_state(secs, autoplay, &state_thread)
+                                .map_err(|e| e.to_string());
+                            if r.is_ok() {
+                                *position_thread.lock() = secs;
                             }
-                            *position_thread.lock() = secs;
+                            send_ack(ack, r);
                         }
                         AudioCmd::Volume(v) => {
                             core.volume = v.clamp(0.0, 1.0);
@@ -292,6 +340,7 @@ impl AudioEngine {
             volume,
             position,
             playing,
+            device_ok,
         })
     }
 
@@ -310,6 +359,17 @@ impl AudioEngine {
             .map_err(|_| anyhow!("audio thread unavailable"))
     }
 
+    fn wait_ack(
+        &self,
+        ack_rx: crossbeam_channel::Receiver<std::result::Result<(), String>>,
+    ) -> Result<()> {
+        match ack_rx.recv_timeout(std::time::Duration::from_secs(8)) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(msg)) => Err(anyhow!(msg)),
+            Err(_) => Err(anyhow!("timed out waiting for audio engine")),
+        }
+    }
+
     pub fn load_track(&self, path: &str) -> Result<()> {
         let p = PathBuf::from(path);
         if !p.exists() {
@@ -321,15 +381,13 @@ impl AudioEngine {
             path: p,
             ack: Some(ack_tx),
         })?;
-        match ack_rx.recv_timeout(std::time::Duration::from_secs(8)) {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(msg)) => Err(anyhow!(msg)),
-            Err(_) => Err(anyhow!("timed out waiting for audio load")),
-        }
+        self.wait_ack(ack_rx)
     }
 
     pub fn play(&self) -> Result<()> {
-        self.send(AudioCmd::Play)
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
+        self.send(AudioCmd::Play { ack: Some(ack_tx) })?;
+        self.wait_ack(ack_rx)
     }
 
     pub fn pause(&self) -> Result<()> {
@@ -337,7 +395,9 @@ impl AudioEngine {
     }
 
     pub fn toggle(&self) -> Result<()> {
-        self.send(AudioCmd::Toggle)
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
+        self.send(AudioCmd::Toggle { ack: Some(ack_tx) })?;
+        self.wait_ack(ack_rx)
     }
 
     #[allow(dead_code)]
@@ -351,6 +411,7 @@ impl AudioEngine {
         self.send(AudioCmd::Volume(v))
     }
 
+    #[allow(dead_code)]
     pub fn volume(&self) -> f32 {
         *self.volume.lock()
     }
@@ -373,7 +434,12 @@ impl AudioEngine {
     }
 
     pub fn seek(&self, position_secs: f64) -> Result<()> {
-        self.send(AudioCmd::Seek(position_secs.max(0.0)))
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded(1);
+        self.send(AudioCmd::Seek {
+            secs: position_secs.max(0.0),
+            ack: Some(ack_tx),
+        })?;
+        self.wait_ack(ack_rx)
     }
 
     pub fn current_path(&self) -> Option<PathBuf> {
@@ -382,5 +448,10 @@ impl AudioEngine {
 
     pub fn peaks(&self, path: &str, buckets: usize) -> Result<Vec<f32>> {
         extract_peaks(Path::new(path), buckets)
+    }
+
+    #[allow(dead_code)]
+    pub fn device_available(&self) -> bool {
+        self.device_ok.load(Ordering::SeqCst)
     }
 }

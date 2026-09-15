@@ -188,7 +188,9 @@ export function EqualizerModal({ open, onClose }: Props) {
                 Reset to Flat
               </button>
               <span className={styles.hintText}>
-                {enabled ? "Processing Active (32-bit float precision)" : "Bypassed"}
+                {enabled
+                  ? "UI preview only — native playback has no EQ applied"
+                  : "Bypassed"}
               </span>
               <button
                 type="button"

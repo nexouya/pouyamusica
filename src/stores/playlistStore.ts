@@ -19,11 +19,14 @@ type PlaylistState = {
   addTracks: (id: string, paths: string[]) => Promise<void>;
   removeTrack: (id: string, path: string) => Promise<void>;
   moveTrack: (id: string, from: number, to: number) => Promise<void>;
+  moveTrackByPath: (id: string, path: string, to: number) => Promise<void>;
   playPlaylist: (id: string) => Promise<void>;
   setAddPickerOpen: (open: boolean) => void;
   toggleAddPickerId: (path: string) => void;
   confirmAddSelected: () => Promise<void>;
   tracksFor: (playlist: Playlist | null) => TrackMeta[];
+  /** UI rows with the raw playlist index (survives missing library paths). */
+  rowsFor: (playlist: Playlist | null) => Array<{ track: TrackMeta; rawIndex: number }>;
 };
 
 export const usePlaylistStore = create<PlaylistState>((set, get) => ({
@@ -110,15 +113,27 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
     }
   },
 
+  moveTrackByPath: async (id, path, to) => {
+    try {
+      await api.movePlaylistTrackByPath(id, path, to);
+      await get().refresh();
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
   playPlaylist: async (id) => {
     const pl = get().playlists.find((p) => p.id === id);
     if (!pl || !pl.tracks.length) return;
     const lib = useLibraryStore.getState().tracks;
-    const first = lib.find((t) => t.path === pl.tracks[0]);
+    const byPath = new Map(lib.map((t) => [t.path, t]));
+    // Keep only playable tracks, preserving playlist order.
+    const ordered = pl.tracks
+      .map((p) => byPath.get(p))
+      .filter((t): t is TrackMeta => Boolean(t));
+    const first = ordered[0];
     if (first) {
-      // set queue to playlist order
-      void api.setQueue(pl.tracks).catch(() => undefined);
-      await usePlayerStore.getState().playTrack(first);
+      await usePlayerStore.getState().playTrack(first, ordered);
     }
   },
 
@@ -143,10 +158,20 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
 
   tracksFor: (playlist) => {
     if (!playlist) return [];
+    return get()
+      .rowsFor(playlist)
+      .map((r) => r.track);
+  },
+
+  rowsFor: (playlist) => {
+    if (!playlist) return [];
     const lib = useLibraryStore.getState().tracks;
     const byPath = new Map(lib.map((t) => [t.path, t]));
-    return playlist.tracks
-      .map((p) => byPath.get(p))
-      .filter((t): t is TrackMeta => Boolean(t));
+    const rows: Array<{ track: TrackMeta; rawIndex: number }> = [];
+    playlist.tracks.forEach((p, rawIndex) => {
+      const t = byPath.get(p);
+      if (t) rows.push({ track: t, rawIndex });
+    });
+    return rows;
   },
 }));

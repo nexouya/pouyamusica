@@ -16,7 +16,7 @@ export function HomeView() {
   const playTrack = usePlayerStore((s) => s.playTrack);
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const liked = usePlayerStore((s) => s.liked);
-  const toggleLike = usePlayerStore((s) => s.toggleLikeCurrent);
+  const toggleLikePath = usePlayerStore((s) => s.toggleLikePath);
 
   const hero = current || tracks[0] || null;
   const popular = useMemo(() => {
@@ -184,8 +184,7 @@ export function HomeView() {
                 type="button"
                 className={`${styles.heroLike} ${isLiked ? styles.heroLikeOn : ""}`}
                 onClick={() => {
-                  if (current?.id !== hero.id) void playTrack(hero).then(() => toggleLike());
-                  else void toggleLike();
+                  void toggleLikePath(hero.path);
                 }}
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.92 }}
@@ -223,7 +222,7 @@ export function HomeView() {
                   className={styles.rowAction}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void toggleLike();
+                    void toggleLikePath(hero.path);
                   }}
                   aria-label="Like"
                 >
@@ -237,6 +236,7 @@ export function HomeView() {
               key={t.id}
               track={t}
               index={i + (hero ? 1 : 0)}
+              queue={tracks}
               meta={t.duration_secs ? formatTime(t.duration_secs) : undefined}
               action={
                 <button
@@ -244,7 +244,7 @@ export function HomeView() {
                   className={styles.rowAction}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void playTrack(t);
+                    void playTrack(t, tracks);
                   }}
                   aria-label="Play"
                 >

@@ -13,12 +13,15 @@ export function TrackRow({
   highlight: _highlight,
   meta,
   action,
+  queue,
 }: {
   track: TrackMeta;
   index: number;
   highlight?: boolean;
   meta?: string;
   action?: ReactNode;
+  /** Play context for this row (playlist / liked). Defaults to full library. */
+  queue?: TrackMeta[];
 }) {
   const playTrack = usePlayerStore((s) => s.playTrack);
   const currentId = usePlayerStore((s) => s.current?.id);
@@ -31,11 +34,12 @@ export function TrackRow({
       role="button"
       tabIndex={0}
       className={`${styles.row} ${isSelected ? styles.rowActive : ""} ${isPlaying ? styles.rowPlaying : ""}`}
-      onClick={() => void playTrack(track)}
+      onClick={() => void playTrack(track, queue)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          void playTrack(track);
+          e.stopPropagation();
+          void playTrack(track, queue);
         }
       }}
       whileHover={{ x: 3 }}

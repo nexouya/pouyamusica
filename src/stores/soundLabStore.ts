@@ -19,6 +19,7 @@ import {
 import { api } from "../core/api";
 import { usePlayerStore } from "./playerStore";
 import { useLibraryStore } from "./libraryStore";
+import { updateAudioVisualData } from "../core/events/audioVisualBus";
 
 type SoundLabStore = {
   preset: SoundLabPresetId;
@@ -132,7 +133,12 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
 
   pollSpectrum: () => {
     if (!get().webPath) return;
-    set({ spectrum: liveSpectrum() });
+    const bands = liveSpectrum();
+    set({ spectrum: bands });
+    const rms =
+      bands.reduce((a, b) => a + b * b, 0) / Math.max(1, bands.length);
+    // Feed FocusMode / AmbientAura which listen to the shared visual bus.
+    updateAudioVisualData(bands, Math.sqrt(rms));
   },
 
   syncPlaybackPath: async () => {

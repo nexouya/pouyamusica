@@ -67,20 +67,23 @@ pub fn seek(state: State<'_, AppState>, position: f64) -> Result<(), String> {
 
 #[tauri::command]
 pub fn set_volume(state: State<'_, AppState>, level: f32) -> Result<(), String> {
-    state.engine.set_volume(level).map_err(|e| e.to_string())?;
+    let v = level.clamp(0.0, 1.0);
+    state.engine.set_volume(v).map_err(|e| e.to_string())?;
+    state.set_user_volume(v);
     state.persist();
     Ok(())
 }
 
 /// Mute/unmute the native engine without writing settings (Sound Lab handoff).
+/// Unmute restores the session user volume, not a stale settings-file value.
 #[tauri::command]
 pub fn set_engine_muted(state: State<'_, AppState>, muted: bool) -> Result<(), String> {
     let target = if muted {
         0.0
     } else {
-        let settings = crate::settings::load_settings();
-        if settings.volume > 0.0 {
-            settings.volume
+        let v = state.user_volume();
+        if v > 0.0 {
+            v
         } else {
             0.8
         }
@@ -90,9 +93,21 @@ pub fn set_engine_muted(state: State<'_, AppState>, muted: bool) -> Result<(), S
 
 /// Read a local audio file as base64 for the Web Audio path (asset-protocol fallback).
 #[tauri::command]
-pub fn read_audio_b64(path: String) -> Result<String, String> {
+pub async fn read_audio_b64(path: String) -> Result<String, String> {
     use base64::Engine as _;
-    let bytes = std::fs::read(&path).map_err(|e| format!("read failed: {e}"))?;
+    const MAX_BYTES: u64 = 180 * 1024 * 1024;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let meta = std::fs::metadata(&path).map_err(|e| format!("stat failed: {e}"))?;
+        if meta.len() > MAX_BYTES {
+            return Err(format!(
+                "audio file too large for base64 load ({} bytes)",
+                meta.len()
+            ));
+        }
+        std::fs::read(&path).map_err(|e| format!("read failed: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     if bytes.is_empty() {
         return Err("empty audio file".into());
     }
@@ -105,7 +120,7 @@ pub fn get_playback_status(state: State<'_, AppState>) -> PlaybackStatus {
         playing: state.engine.is_playing(),
         position_secs: state.engine.position_secs(),
         duration_secs: state.engine.duration_secs(),
-        volume: state.engine.volume(),
+        volume: state.user_volume(),
         path: state
             .engine
             .current_path()
@@ -114,8 +129,30 @@ pub fn get_playback_status(state: State<'_, AppState>) -> PlaybackStatus {
 }
 
 #[tauri::command]
-pub fn get_waveform(state: State<'_, AppState>, path: String) -> Result<Vec<f32>, String> {
-    state.engine.peaks(&path, 240).map_err(|e| e.to_string())
+pub async fn get_waveform(state: State<'_, AppState>, path: String) -> Result<Vec<f32>, String> {
+    let engine = state.engine.clone();
+    tauri::async_runtime::spawn_blocking(move || engine.peaks(&path, 240).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Active play order: explicit queue if set, otherwise full library order.
+fn play_order(state: &AppState) -> Vec<String> {
+    let queue = state.queue.lock().clone();
+    if !queue.is_empty() {
+        return queue;
+    }
+    state.library.lock().iter().map(|t| t.path.clone()).collect()
+}
+
+fn find_track(state: &AppState, path: &str) -> Option<crate::library::TrackMeta> {
+    state
+        .library
+        .lock()
+        .iter()
+        .find(|t| t.path == path)
+        .cloned()
+        .or_else(|| read_track(std::path::Path::new(path)).ok())
 }
 
 #[tauri::command]
@@ -145,7 +182,14 @@ pub fn play_track(
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         msg
     })?;
-    let idx = state.library.lock().iter().position(|t| t.path == path);
+    let order = play_order(&state);
+    let idx = order.iter().position(|p| p == &path).or_else(|| {
+        state
+            .library
+            .lock()
+            .iter()
+            .position(|t| t.path == path)
+    });
     *state.current_index.lock() = idx;
     state.persist();
     Ok(meta)
@@ -156,18 +200,23 @@ pub fn next_track(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<crate::library::TrackMeta>, String> {
-    let lib = state.library.lock().clone();
-    if lib.is_empty() {
+    let order = play_order(&state);
+    if order.is_empty() {
         return Ok(None);
     }
     let mut idx = state.current_index.lock();
     let next = match *idx {
-        Some(i) if i + 1 < lib.len() => i + 1,
+        Some(i) if i + 1 < order.len() => i + 1,
+        // End of queue: wrap only when the queue is the full library fallback.
         Some(_) => 0,
         None => 0,
     };
+    let path = order[next].clone();
     *idx = Some(next);
-    let track = lib[next].clone();
+    drop(idx);
+    let Some(track) = find_track(&state, &path) else {
+        return Ok(None);
+    };
     state
         .engine
         .load_track(&track.path)
@@ -182,17 +231,21 @@ pub fn prev_track(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<crate::library::TrackMeta>, String> {
-    let lib = state.library.lock().clone();
-    if lib.is_empty() {
+    let order = play_order(&state);
+    if order.is_empty() {
         return Ok(None);
     }
     let mut idx = state.current_index.lock();
     let prev = match *idx {
-        Some(0) | None => lib.len() - 1,
+        Some(0) | None => order.len() - 1,
         Some(i) => i - 1,
     };
+    let path = order[prev].clone();
     *idx = Some(prev);
-    let track = lib[prev].clone();
+    drop(idx);
+    let Some(track) = find_track(&state, &path) else {
+        return Ok(None);
+    };
     state
         .engine
         .load_track(&track.path)

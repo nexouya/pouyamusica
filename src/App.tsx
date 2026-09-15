@@ -14,6 +14,7 @@ import { useAccentSync } from "./hooks/useTauriEvents";
 import { useLibraryStore } from "./stores/libraryStore";
 import { usePlayerStore } from "./stores/playerStore";
 import { useUiStore } from "./stores/uiStore";
+import { useSoundLabStore } from "./stores/soundLabStore";
 import { ErrorBanner } from "./components/layout/ErrorBanner";
 import "./features";
 
@@ -38,10 +39,23 @@ export default function App() {
     void hydratePlayer();
   }, [initLibrary, hydratePlayer]);
 
+  // Keep FocusMode / AmbientAura alive when Sound Lab owns the audio graph.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const lab = useSoundLabStore.getState();
+      const playing = usePlayerStore.getState().playing;
+      if (lab.webPath && playing) lab.pollSpectrum();
+    }, 33);
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const el = e.target as HTMLElement | null;
+      if (el?.isContentEditable) return;
+      if (e.defaultPrevented) return;
       const st = usePlayerStore.getState();
 
       if (e.code === "Space") {

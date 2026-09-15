@@ -22,9 +22,10 @@ export function PlaylistsView() {
   const rename = usePlaylistStore((s) => s.rename);
   const remove = usePlaylistStore((s) => s.remove);
   const removeTrack = usePlaylistStore((s) => s.removeTrack);
-  const moveTrack = usePlaylistStore((s) => s.moveTrack);
+  const moveTrackByPath = usePlaylistStore((s) => s.moveTrackByPath);
   const playPlaylist = usePlaylistStore((s) => s.playPlaylist);
   const tracksFor = usePlaylistStore((s) => s.tracksFor);
+  const rowsFor = usePlaylistStore((s) => s.rowsFor);
   const addPickerOpen = usePlaylistStore((s) => s.addPickerOpen);
   const addPickerIds = usePlaylistStore((s) => s.addPickerIds);
   const setAddPickerOpen = usePlaylistStore((s) => s.setAddPickerOpen);
@@ -50,6 +51,7 @@ export function PlaylistsView() {
 
   const selected = playlists.find((p) => p.id === selectedId) ?? null;
   const tracks = tracksFor(selected);
+  const rows = rowsFor(selected);
 
   const pickable = library.filter((t) => {
     const q = pickQuery.trim().toLowerCase();
@@ -235,13 +237,13 @@ export function PlaylistsView() {
                   </button>
                 </div>
               )}
-              {tracks.map((t, i) => {
+              {rows.map(({ track: t, rawIndex }, i) => {
                 const playing = currentPath === t.path;
                 return (
                   <div
-                    key={`${t.path}-${i}`}
+                    key={`${t.path}-${rawIndex}`}
                     className={styles.trackRow}
-                    onDoubleClick={() => void playTrack(t)}
+                    onDoubleClick={() => void playTrack(t, tracks)}
                   >
                     <span className={styles.plCount} style={{ width: 20, textAlign: "right" }}>
                       {i + 1}
@@ -264,7 +266,7 @@ export function PlaylistsView() {
                       <button
                         type="button"
                         className={styles.iconBtn}
-                        onClick={() => void playTrack(t)}
+                        onClick={() => void playTrack(t, tracks)}
                         aria-label="Play"
                       >
                         <IconPlay size={13} />
@@ -273,7 +275,10 @@ export function PlaylistsView() {
                         type="button"
                         className={styles.iconBtn}
                         disabled={i === 0}
-                        onClick={() => void moveTrack(selected.id, i, i - 1)}
+                        onClick={() => {
+                          const prev = rows[i - 1];
+                          if (prev && selected) void moveTrackByPath(selected.id, t.path, prev.rawIndex);
+                        }}
                         aria-label="Move up"
                       >
                         <IconChevronUp size={14} />
@@ -281,8 +286,11 @@ export function PlaylistsView() {
                       <button
                         type="button"
                         className={styles.iconBtn}
-                        disabled={i === tracks.length - 1}
-                        onClick={() => void moveTrack(selected.id, i, i + 1)}
+                        disabled={i === rows.length - 1}
+                        onClick={() => {
+                          const next = rows[i + 1];
+                          if (next && selected) void moveTrackByPath(selected.id, t.path, next.rawIndex);
+                        }}
                         aria-label="Move down"
                       >
                         <IconChevronDown size={14} />

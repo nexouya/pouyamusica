@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { FftFrame, PlaybackProgress, TrackMeta } from "../../types";
 import { usePlayerStore } from "../../stores/playerStore";
 import { useLibraryStore } from "../../stores/libraryStore";
+import { useSoundLabStore } from "../../stores/soundLabStore";
 import { api } from "../api";
 import { updateAudioVisualData } from "./audioVisualBus";
 
@@ -38,12 +39,18 @@ function fanout<K extends keyof AppEventMap>(name: K, payload: AppEventMap[K]) {
   for (const fn of extras) fn(name, payload);
 }
 
+/** Sound Lab owns transport — do not let native rodio progress stomp UI state. */
+function webOwnsTransport(): boolean {
+  return useSoundLabStore.getState().webPath === true;
+}
+
 export function useAppEvents() {
   useEffect(() => {
     const unsubs: Array<Promise<Unsub> | Unsub> = [];
 
     unsubs.push(
       listen<FftFrame>("fft-data", (e) => {
+        if (webOwnsTransport()) return;
         if (e.payload?.bands) {
           updateAudioVisualData(e.payload.bands, e.payload.rms);
         }
@@ -55,6 +62,10 @@ export function useAppEvents() {
       listen<PlaybackProgress>("playback-progress", (e) => {
         const p = e.payload;
         if (!p) return;
+        if (webOwnsTransport()) {
+          // Web path already drives position/playing/volume.
+          return;
+        }
         const st = usePlayerStore.getState();
         st.setPosition(p.position_secs);
         if (p.duration_secs > 0) st.setDuration(p.duration_secs);
@@ -66,6 +77,7 @@ export function useAppEvents() {
 
     unsubs.push(
       listen("playback-ended", (e) => {
+        if (webOwnsTransport()) return;
         const st = usePlayerStore.getState();
         if (st.repeat === "one") {
           void st.seek(0).then(() => api.play()).then(() => st.setPlaying(true));

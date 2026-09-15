@@ -55,7 +55,7 @@ export function SearchView() {
         ) : (
           <div className={styles.list}>
             {results.map((t, i) => (
-              <TrackRow key={t.id} track={t} index={i} />
+              <TrackRow key={t.id} track={t} index={i} queue={results} />
             ))}
           </div>
         )}

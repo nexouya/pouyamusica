@@ -86,7 +86,7 @@ export function LibraryView() {
         ) : (
           <div className={styles.list}>
             {filtered.map((t, i) => (
-              <TrackRow key={t.id} track={t} index={i} />
+              <TrackRow key={t.id} track={t} index={i} queue={filtered} />
             ))}
           </div>
         )}

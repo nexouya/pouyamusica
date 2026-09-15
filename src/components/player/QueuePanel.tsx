@@ -11,9 +11,15 @@ export function QueuePanel() {
   const toggle = usePlayerStore((s) => s.toggleQueue);
   const current = usePlayerStore((s) => s.current);
   const playTrack = usePlayerStore((s) => s.playTrack);
-  const tracks = useLibraryStore((s) => s.tracks);
+  const contextQueue = usePlayerStore((s) => s.queue);
+  const library = useLibraryStore((s) => s.tracks);
 
-  const queue = tracks.filter((t) => t.path !== current?.path).slice(0, 40);
+  // Show the active play context (playlist/liked/library), not a random library slice.
+  const source = contextQueue.length ? contextQueue : library;
+  const queue = source
+    .map((t, i) => ({ t, i }))
+    .filter(({ t }) => t.path !== current?.path)
+    .slice(0, 80);
 
   return (
     <AnimatePresence>
@@ -41,13 +47,13 @@ export function QueuePanel() {
                 </button>
               </div>
               <div className={styles.list}>
-                {queue.map((t, i) => (
+                {queue.map(({ t, i }) => (
                   <button
-                    key={t.id}
+                    key={`${t.id}-${i}`}
                     type="button"
                     className={styles.item}
                     onClick={() => {
-                      void playTrack(t);
+                      void playTrack(t, source);
                       toggle();
                     }}
                   >
@@ -66,6 +72,11 @@ export function QueuePanel() {
                     <span className={`mono ${styles.dur}`}>{formatTime(t.duration_secs)}</span>
                   </button>
                 ))}
+                {!queue.length && (
+                  <p className={styles.meta} style={{ padding: 16, opacity: 0.7 }}>
+                    Queue is empty.
+                  </p>
+                )}
               </div>
             </GlassPanel>
           </motion.div>

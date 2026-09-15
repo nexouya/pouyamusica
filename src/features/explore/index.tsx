@@ -116,7 +116,7 @@ export function ExploreView() {
           ) : (
             <div className={styles.list}>
               {tracks.map((t, i) => (
-                <TrackRow key={t.id} track={t} index={i} />
+                <TrackRow key={t.id} track={t} index={i} queue={tracks} />
               ))}
             </div>
           )}

@@ -18,18 +18,21 @@ type PlayerState = {
   queueOpen: boolean;
   focusMode: boolean;
   fft: number[];
+  /** Ordered play context — playlist / liked / library. Next/prev walk this. */
+  queue: TrackMeta[];
   setPlaying: (v: boolean) => void;
   setPosition: (v: number) => void;
   setDuration: (v: number) => void;
   setVolume: (v: number) => void;
   setFft: (bands: number[]) => void;
+  setQueue: (tracks: TrackMeta[]) => void;
   toggleShuffle: () => void;
   cycleRepeat: () => void;
   toggleQueue: () => void;
   toggleFocus: () => void;
   hydrate: () => Promise<void>;
   /** Load + start a track (IPC play_track). */
-  playTrack: (track: TrackMeta) => Promise<void>;
+  playTrack: (track: TrackMeta, queue?: TrackMeta[]) => Promise<void>;
   /** Adopt metadata when backend already loaded the track (no second IPC load). */
   adoptTrack: (track: TrackMeta) => Promise<void>;
   togglePlay: () => Promise<void>;
@@ -38,6 +41,7 @@ type PlayerState = {
   seek: (secs: number) => Promise<void>;
   applyVolume: (level: number) => Promise<void>;
   toggleLikeCurrent: () => Promise<void>;
+  toggleLikePath: (path: string) => Promise<void>;
 };
 
 async function loadWaveform(path: string): Promise<number[]> {
@@ -48,6 +52,24 @@ async function loadWaveform(path: string): Promise<number[]> {
 async function soundLabWeb() {
   const m = await import("./soundLabStore");
   return m;
+}
+
+async function pauseAllPaths() {
+  try {
+    const lab = await soundLabWeb();
+    if (lab.useSoundLabStore.getState().webPath) {
+      const { pauseWeb } = await import("../audio/soundLab/webSource");
+      pauseWeb();
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    await api.pause();
+  } catch {
+    /* ignore */
+  }
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -63,12 +85,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queueOpen: false,
   focusMode: false,
   fft: new Array(32).fill(0),
+  queue: [],
 
   setPlaying: (v) => set({ playing: v }),
   setPosition: (v) => set({ position: v }),
   setDuration: (v) => set({ duration: v }),
   setVolume: (v) => set({ volume: v }),
   setFft: (bands) => set({ fft: bands }),
+  setQueue: (tracks) => set({ queue: tracks }),
   toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),
   cycleRepeat: () =>
     set((s) => ({
@@ -79,17 +103,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const liked = await api.getLiked();
-      set({ liked });
+      const [liked, status] = await Promise.all([
+        api.getLiked().catch(() => [] as string[]),
+        api.getPlaybackStatus().catch(() => null),
+      ]);
+      set({
+        liked,
+        volume: status?.volume ?? get().volume,
+      });
     } catch {
       /* ignore */
     }
   },
 
-  playTrack: async (track) => {
+  playTrack: async (track, queue) => {
     try {
-      const paths = useLibraryStore.getState().tracks.map((t) => t.path);
-      if (paths.length) void api.setQueue(paths).catch(() => undefined);
+      // Build play context. Explicit queue (playlist/liked) wins over library order.
+      const context =
+        queue && queue.length
+          ? queue
+          : useLibraryStore.getState().tracks.map((t) => t);
+      if (context.length) {
+        set({ queue: context });
+        void api.setQueue(context.map((t) => t.path)).catch(() => undefined);
+      }
 
       const lab = await soundLabWeb();
       const labState = lab.useSoundLabStore.getState();
@@ -104,10 +141,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       }
 
-      const meta = await api.playTrack(track.path).catch((e) => {
+      let meta: TrackMeta | null = null;
+      try {
+        meta = await api.playTrack(track.path);
+      } catch (e) {
         console.warn("playTrack IPC", e);
-        return track;
-      });
+        set({ playing: false });
+        useLibraryStore.setState({
+          error: `Playback failed: ${e}`,
+        });
+        return;
+      }
 
       if (get().volume <= 0) {
         void get().applyVolume(0.8);
@@ -199,10 +243,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   next: async () => {
-    const { current, shuffle, repeat } = get();
-    const tracks = useLibraryStore.getState().tracks;
+    const { current, shuffle, repeat, queue } = get();
+    const tracks = queue.length ? queue : useLibraryStore.getState().tracks;
     if (!tracks.length) return;
-    const idx = tracks.findIndex((t) => t.id === current?.id);
+    const idx = tracks.findIndex((t) => t.path === current?.path);
     let nextIdx: number;
 
     if (shuffle && tracks.length > 1) {
@@ -214,17 +258,18 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (nextIdx >= tracks.length) {
         if (repeat === "all") nextIdx = 0;
         else {
+          await pauseAllPaths();
           set({ playing: false });
           return;
         }
       }
     }
-    await get().playTrack(tracks[nextIdx]);
+    await get().playTrack(tracks[nextIdx], tracks);
   },
 
   prev: async () => {
-    const { current, shuffle, position } = get();
-    const tracks = useLibraryStore.getState().tracks;
+    const { current, shuffle, position, queue } = get();
+    const tracks = queue.length ? queue : useLibraryStore.getState().tracks;
     if (!tracks.length || !current) return;
     // Standard transport: >3s restarts current track; otherwise previous.
     if (position > 3) {
@@ -232,17 +277,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       try {
         const lab = await soundLabWeb();
         if (lab.useSoundLabStore.getState().webPath) {
-          await (await import("./soundLabStore")).webTogglePlay();
+          if (!lab.webIsPlaying()) {
+            await lab.webPlayTrack(current.path, get().volume);
+          } else {
+            lab.webSeek(0);
+          }
         } else {
           await api.play();
         }
-        set({ playing: true });
+        set({ playing: true, position: 0 });
       } catch {
         /* ignore */
       }
       return;
     }
-    const idx = tracks.findIndex((t) => t.id === current.id);
+    const idx = tracks.findIndex((t) => t.path === current.path);
     let prevIdx: number;
     if (shuffle && tracks.length > 1) {
       prevIdx = Math.floor(Math.random() * tracks.length);
@@ -250,7 +299,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     } else {
       prevIdx = idx <= 0 ? tracks.length - 1 : idx - 1;
     }
-    await get().playTrack(tracks[prevIdx]);
+    await get().playTrack(tracks[prevIdx], tracks);
   },
 
   seek: async (secs) => {
@@ -271,24 +320,31 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const v = Math.min(1, Math.max(0, level));
     set({ volume: v });
     try {
-      const lab = await soundLabWeb();
-      if (lab.useSoundLabStore.getState().webPath) {
-        lab.webVolume(v);
-        // Keep native muted while web path is live (no settings write)
-        await api.setEngineMuted(true).catch(() => undefined);
-        return;
-      }
+      // Always persist user volume, even when Sound Lab owns the audible path.
       await api.setVolume(v);
     } catch (e) {
       console.error("setVolume failed", e);
+    }
+    try {
+      const lab = await soundLabWeb();
+      if (lab.useSoundLabStore.getState().webPath) {
+        lab.webVolume(v);
+        await api.setEngineMuted(true).catch(() => undefined);
+      }
+    } catch (e) {
+      console.error("web volume failed", e);
     }
   },
 
   toggleLikeCurrent: async () => {
     const current = get().current;
     if (!current) return;
+    await get().toggleLikePath(current.path);
+  },
+
+  toggleLikePath: async (path: string) => {
     try {
-      const liked = await api.toggleLike(current.path);
+      const liked = await api.toggleLike(path);
       set({ liked });
     } catch (e) {
       console.error("like failed", e);
