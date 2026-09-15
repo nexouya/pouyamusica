@@ -11,12 +11,30 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPrimaryBrowser } from '../browserCookies.js';
+import { writeCookiesFile } from '../chromeCookies.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const moduleRoot = path.resolve(__dirname, '..');
 
 const run = promisify(execFile);
+
+const LIVE_COOKIES = path.join(moduleRoot, 'cookies-live.txt');
+let liveCookiesAt = 0;
+
+/** Refresh cookies-live.txt from Chrome (best-effort). */
+async function refreshLiveCookies() {
+  if (Date.now() - liveCookiesAt < 30_000 && fsSync.existsSync(LIVE_COOKIES)) {
+    return LIVE_COOKIES;
+  }
+  try {
+    writeCookiesFile(LIVE_COOKIES);
+    liveCookiesAt = Date.now();
+    return LIVE_COOKIES;
+  } catch {
+    return fsSync.existsSync(LIVE_COOKIES) ? LIVE_COOKIES : null;
+  }
+}
 
 /** Every plausible way yt-dlp might be installed, in order of preference. */
 function candidates() {
@@ -90,24 +108,29 @@ async function ytdlp(args, options) {
   const proxyArgs = process.env.PROXY_URL ? ['--proxy', process.env.PROXY_URL] : [];
 
   const extraArgs = [];
-  // Cookie resolution strategy:
-  // 1. If running on desktop / Electron, prioritize live browser cookies from Chrome/Edge/Brave/Firefox
-  // 2. If COOKIES_FILE is specified or cookies.txt exists, use that as secondary fallback
-  const browser = process.env.NO_BROWSER_COOKIES !== 'true' ? (process.env.BROWSER_COOKIES || getPrimaryBrowser()) : null;
-  const cookieCandidates = [
-    process.env.COOKIES_FILE,
-    path.resolve(moduleRoot, 'cookies.txt'),
-    path.resolve(process.cwd(), 'cookies.txt'),
-    path.resolve(process.cwd(), 'haste strim', 'cookies.txt')
-  ].filter(Boolean);
-  const cookiePath = cookieCandidates.find(p => fsSync.existsSync(p));
-  let usedBrowserCookies = false;
+  const browser = process.env.NO_BROWSER_COOKIES !== 'true'
+    ? (process.env.BROWSER_COOKIES || getPrimaryBrowser())
+    : null;
 
-  if (browser) {
-    extraArgs.push('--cookies-from-browser', browser);
-    usedBrowserCookies = true;
-  } else if (cookiePath) {
-    extraArgs.push('--cookies', cookiePath);
+  // Prefer our own decrypted cookies-live.txt (handles Chrome DPAPI issues).
+  // Fall back to yt-dlp --cookies-from-browser, then cookies.txt.
+  let usedBrowserCookies = false;
+  if (process.env.NO_BROWSER_COOKIES !== 'true') {
+    const live = await refreshLiveCookies();
+    if (live) {
+      extraArgs.push('--cookies', live);
+    } else if (browser) {
+      extraArgs.push('--cookies-from-browser', browser);
+      usedBrowserCookies = true;
+    } else {
+      const cookiePath = [
+        process.env.COOKIES_FILE,
+        path.resolve(moduleRoot, 'cookies.txt'),
+      ]
+        .filter(Boolean)
+        .find((p) => fsSync.existsSync(p));
+      if (cookiePath) extraArgs.push('--cookies', cookiePath);
+    }
   }
 
   // Supply node as JS runtime if present
@@ -118,11 +141,16 @@ async function ytdlp(args, options) {
   try {
     return await run(found.cmd, [...found.prefix, ...proxyArgs, ...extraArgs, ...args], { windowsHide: true, ...options });
   } catch (err) {
-    // If it failed specifically because of browser cookies (e.g. Chrome locked or not installed), retry once without --cookies-from-browser
-    if (usedBrowserCookies && (err.stderr?.includes('cookies') || err.message?.includes('cookies'))) {
-      console.warn('Browser cookie extraction notice, retrying yt-dlp without browser cookies:', err.stderr?.slice(0, 100));
-      const fallbackArgs = extraArgs.filter((a, idx, arr) => a !== '--cookies-from-browser' && arr[idx - 1] !== '--cookies-from-browser');
-      return await run(found.cmd, [...found.prefix, ...proxyArgs, ...fallbackArgs, ...args], { windowsHide: true, ...options });
+    const stderr = String(err.stderr || err.message || '');
+    // Chrome holds a lock on its cookie DB while running — surface a clear fix.
+    if (/Could not copy Chrome cookie database|Sign in to confirm/i.test(stderr)) {
+      const friendly = new Error(
+        /Could not copy Chrome cookie database/i.test(stderr)
+          ? 'Chrome is locking its cookie database. Close Google Chrome completely, then retry. (Or export cookies.txt via an extension and place it in stream-core/cookies.txt)'
+          : 'YouTube bot-check requires signed-in cookies. Close Chrome and retry so yt-dlp can read them, or import cookies.txt.'
+      );
+      friendly.stderr = stderr;
+      throw friendly;
     }
     throw err;
   }

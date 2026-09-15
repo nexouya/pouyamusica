@@ -33,6 +33,8 @@ export function OnlineView() {
   const downloading = useOnlineStore((s) => s.downloading);
   const downloadNote = useOnlineStore((s) => s.downloadNote);
   const buffering = useOnlineStore((s) => s.buffering);
+  const signedIn = useOnlineStore((s) => s.signedIn);
+  const cookieHint = useOnlineStore((s) => s.cookieHint);
   const ensureCore = useOnlineStore((s) => s.ensureCore);
   const search = useOnlineStore((s) => s.search);
   const setQuery = useOnlineStore((s) => s.setQuery);
@@ -86,18 +88,36 @@ export function OnlineView() {
         <div className={styles.coreRow}>
           <span
             className={styles.corePip}
-            data-on={core?.running ? "true" : "false"}
+            data-on={core?.running && signedIn ? "true" : "false"}
             aria-hidden
           />
           <span className={styles.coreText}>
             {core?.running
-              ? `Stream core live · port ${core.port}${core.node_ok ? "" : " · Node missing?"}`
+              ? signedIn
+                ? `Stream core live · signed-in cookies OK · port ${core.port}`
+                : `Stream core live · NOT signed in — ${cookieHint || "open Chrome and sign into youtube.com"}`
               : coreError
                 ? coreError
                 : "Starting stream core…"}
           </span>
         </div>
-        {searchError && <p className={styles.error}>{searchError}</p>}
+        {searchError && (
+          <p className={styles.error}>
+            {searchError}
+            {/Chrome|cookies|bot-check|Sign in/i.test(searchError) && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className={styles.actionBtn}
+                  onClick={() => void search()}
+                >
+                  Retry
+                </button>
+              </>
+            )}
+          </p>
+        )}
         {downloadNote && <p className={styles.note}>{downloadNote}</p>}
         {buffering && currentId && (
           <p className={styles.note}>Buffering stream… first play can take a few seconds.</p>

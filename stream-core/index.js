@@ -34,7 +34,6 @@ import { createInvidious } from './providers/invidious.js';
 import { installProxy, detectProxy } from './net.js';
 import { createAudioStreamer } from './audio.js';
 import { getAvailableBrowsers, getPrimaryBrowser } from './browserCookies.js';
-import { renderPage, renderResults, renderCard } from './render.js';
 
 /**
  * Initializes and returns a ready-to-mount Express router with all routes configured.
@@ -97,24 +96,6 @@ export async function createStandaloneApp(options = {}) {
 
   const ytRouter = await createYouTubeStreamer(options);
 
-  // Web player test interface at root GET /
-  app.get('/', async (req, res) => {
-    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 200) : '';
-    let songs = [];
-    let error = null;
-
-    if (q) {
-      try {
-        songs = await search(q, 15);
-      } catch (err) {
-        error = err.message;
-      }
-    }
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderPage({ q, songs, error }));
-  });
-
   // Mount streaming router on both root and /yt for versatility
   app.use('/yt', ytRouter);
   app.use('/', ytRouter);
@@ -135,10 +116,7 @@ export {
   detectProxy,
   createAudioStreamer,
   getAvailableBrowsers,
-  getPrimaryBrowser,
-  renderPage,
-  renderResults,
-  renderCard
+  getPrimaryBrowser
 };
 
 export default createYouTubeStreamer;

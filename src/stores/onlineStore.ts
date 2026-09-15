@@ -27,6 +27,8 @@ type OnlineState = {
   position: number;
   duration: number;
   buffering: boolean;
+  cookieHint: string | null;
+  signedIn: boolean;
   downloading: Record<string, boolean>;
   downloadNote: string | null;
   audio: HTMLAudioElement | null;
@@ -156,6 +158,8 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
   position: 0,
   duration: 0,
   buffering: false,
+  cookieHint: null,
+  signedIn: false,
   downloading: {},
   downloadNote: null,
   audio: null,
@@ -179,6 +183,23 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
         return false;
       }
       set({ core: { ...status, base_url: base }, coreError: null });
+      // Probe cookie / sign-in state.
+      try {
+        const ck = await fetch(`${base}/api/cookie-status`).then((r) => r.json());
+        set({
+          signedIn: !!ck.signedIn,
+          cookieHint: ck.hint || null,
+        });
+        if (!ck.signedIn) {
+          set({
+            searchError:
+              ck.hint ||
+              "Sign into youtube.com in Google Chrome (Default profile), then search again. Full tracks need signed-in cookies.",
+          });
+        }
+      } catch {
+        /* ignore */
+      }
       return true;
     } catch (e) {
       set({ coreError: String(e), core: null });
@@ -315,10 +336,11 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       set({
         playing: false,
         buffering: false,
-        searchError: "Stream failed — try another result or check network/proxy.",
+        searchError:
+          "Stream failed. If YouTube asked for sign-in: close Google Chrome completely, then click the track again. Full tracks only — no 30s previews.",
       });
       usePlayerStore.setState({ playing: false });
-      useLibraryStore.setState({ error: "YouTube stream failed" });
+      useLibraryStore.setState({ error: "YouTube stream failed — close Chrome and retry" });
     };
 
     const tickProgress = () => {
