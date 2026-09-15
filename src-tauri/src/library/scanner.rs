@@ -13,7 +13,11 @@ use std::time::Duration;
 
 use super::color_extract::{encode_cover_jpeg, extract_palette, pick_accent};
 
-const AUDIO_EXTS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac", "opus"];
+const AUDIO_EXTS: &[&str] = &[
+    "mp3", "flac", "wav", "wave", "ogg", "oga", "opus", "m4a", "m4b", "mp4", "aac", "aiff",
+    "aif", "aifc", "ape", "wma", "wmv", "mka", "webm", "caf", "au", "snd", "wv", "dsf", "dff",
+    "spx", "ac3", "amr", "mp2", "mp1", "mpc", "tta", "ra", "mid", "midi", "xma", "adts",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackMeta {

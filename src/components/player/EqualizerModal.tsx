@@ -1,20 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import styles from "./EqualizerModal.module.css";
 import { IconClose } from "../icons/Icons";
+import { useSoundLabStore } from "../../stores/soundLabStore";
+import { usePlayerStore } from "../../stores/playerStore";
+import { useLibraryStore } from "../../stores/libraryStore";
+import { EQ_FREQS } from "../../audio/soundLab/engine";
 
-const FREQUENCIES = [
-  "32Hz",
-  "64Hz",
-  "125Hz",
-  "250Hz",
-  "500Hz",
-  "1kHz",
-  "2kHz",
-  "4kHz",
-  "8kHz",
-  "16kHz",
-];
+const FREQUENCIES = EQ_FREQS.map((f) => (f >= 1000 ? `${f / 1000}kHz` : `${f}Hz`));
 
 const PRESETS: Record<string, number[]> = {
   Flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -26,35 +19,37 @@ const PRESETS: Record<string, number[]> = {
   "Treble Boost": [-2, -1, 0, 0, 1, 2, 4, 6, 7, 8],
 };
 
+function matchPreset(gains: number[]): string {
+  for (const [name, g] of Object.entries(PRESETS)) {
+    if (g.length === gains.length && g.every((v, i) => Math.abs(v - gains[i]) < 0.05)) {
+      return name;
+    }
+  }
+  return "Custom";
+}
+
 type Props = {
   open: boolean;
   onClose: () => void;
 };
 
 export function EqualizerModal({ open, onClose }: Props) {
-  const [enabled, setEnabled] = useState(true);
-  const [preset, setPreset] = useState("Flat");
-  const [gains, setGains] = useState<number[]>(PRESETS.Flat);
-  const [preamp, setPreamp] = useState(0);
+  const eqGains = useSoundLabStore((s) => s.eqGains);
+  const setEqGains = useSoundLabStore((s) => s.setEqGains);
+  const webPath = useSoundLabStore((s) => s.webPath);
+  const lastEngageError = useSoundLabStore((s) => s.lastEngageError);
+  const current = usePlayerStore((s) => s.current);
+  const error = useLibraryStore((s) => s.error);
 
-  const handlePresetSelect = (name: string) => {
-    setPreset(name);
-    if (PRESETS[name]) {
-      setGains([...PRESETS[name]]);
-    }
-  };
-
-  const handleGainChange = (index: number, val: number) => {
-    const next = [...gains];
-    next[index] = val;
-    setGains(next);
-    setPreset("Custom");
-  };
-
-  const resetFlat = () => {
-    handlePresetSelect("Flat");
-    setPreamp(0);
-  };
+  const enabled = eqGains.some((g) => Math.abs(g) > 0.05);
+  const presetName = useMemo(() => matchPreset(eqGains), [eqGains]);
+  const status = lastEngageError
+    ? `DSP error — ${lastEngageError}`
+    : webPath
+      ? "Live on Web Audio · 32-bit float"
+      : current
+        ? "Engages on next play · native until then"
+        : "Play a track to hear EQ";
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +62,21 @@ export function EqualizerModal({ open, onClose }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const applyPreset = (name: string) => {
+    const g = PRESETS[name];
+    if (g) void setEqGains([...g]);
+  };
+
+  const setBand = (index: number, val: number) => {
+    const next = [...eqGains];
+    next[index] = val;
+    void setEqGains(next);
+  };
+
+  const resetFlat = () => {
+    void setEqGains([...PRESETS.Flat]);
+  };
 
   return (
     <AnimatePresence>
@@ -91,17 +101,6 @@ export function EqualizerModal({ open, onClose }: Props) {
               <div className={styles.headRight}>
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={enabled}
-                  aria-label={enabled ? "Disable equalizer" : "Enable equalizer"}
-                  className={`${styles.toggleSwitch} ${enabled ? styles.toggleOn : ""}`}
-                  onClick={() => setEnabled(!enabled)}
-                  title={enabled ? "Disable Equalizer" : "Enable Equalizer"}
-                >
-                  <span className={styles.toggleKnob} />
-                </button>
-                <button
-                  type="button"
                   className={styles.closeBtn}
                   onClick={onClose}
                   aria-label="Close"
@@ -111,28 +110,23 @@ export function EqualizerModal({ open, onClose }: Props) {
               </div>
             </div>
 
-            {/* Presets ribbon */}
             <div className={styles.presets}>
               {Object.keys(PRESETS).map((name) => (
                 <button
                   key={name}
                   type="button"
-                  className={`${styles.presetChip} ${preset === name ? styles.presetChipActive : ""}`}
-                  onClick={() => handlePresetSelect(name)}
+                  className={`${styles.presetChip} ${presetName === name ? styles.presetChipActive : ""}`}
+                  onClick={() => applyPreset(name)}
                 >
                   {name}
                 </button>
               ))}
             </div>
 
-            {/* Sliders Area */}
-            <div
-              className={`${styles.eqArea} ${!enabled ? styles.eqDisabled : ""}`}
-            >
-              {/* Preamp */}
+            <div className={styles.eqArea}>
               <div className={styles.sliderCol}>
                 <span className={styles.sliderVal}>
-                  {preamp > 0 ? `+${preamp}` : preamp}dB
+                  {eqGains[0] > 0 ? `+${eqGains[0]}` : eqGains[0]}dB
                 </span>
                 <div className={styles.sliderTrack}>
                   <input
@@ -140,10 +134,10 @@ export function EqualizerModal({ open, onClose }: Props) {
                     min={-12}
                     max={12}
                     step={0.5}
-                    value={preamp}
-                    disabled={!enabled}
-                    onChange={(e) => setPreamp(parseFloat(e.target.value))}
+                    value={eqGains[0] ?? 0}
+                    onChange={(e) => setBand(0, parseFloat(e.target.value))}
                     className={styles.vSlider}
+                    aria-label={FREQUENCIES[0]}
                   />
                 </div>
                 <span className={styles.sliderFreq}>Pre</span>
@@ -151,9 +145,8 @@ export function EqualizerModal({ open, onClose }: Props) {
 
               <div className={styles.divider} />
 
-              {/* 10 Bands */}
               {FREQUENCIES.map((freq, idx) => {
-                const val = gains[idx] ?? 0;
+                const val = eqGains[idx] ?? 0;
                 return (
                   <div key={freq} className={styles.sliderCol}>
                     <span className={styles.sliderVal}>
@@ -166,11 +159,9 @@ export function EqualizerModal({ open, onClose }: Props) {
                         max={12}
                         step={0.5}
                         value={val}
-                        disabled={!enabled}
-                        onChange={(e) =>
-                          handleGainChange(idx, parseFloat(e.target.value))
-                        }
+                        onChange={(e) => setBand(idx, parseFloat(e.target.value))}
                         className={styles.vSlider}
+                        aria-label={freq}
                       />
                     </div>
                     <span className={styles.sliderFreq}>{freq}</span>
@@ -180,23 +171,14 @@ export function EqualizerModal({ open, onClose }: Props) {
             </div>
 
             <div className={styles.foot}>
-              <button
-                type="button"
-                className={styles.resetBtn}
-                onClick={resetFlat}
-              >
+              <button type="button" className={styles.resetBtn} onClick={resetFlat}>
                 Reset to Flat
               </button>
               <span className={styles.hintText}>
-                {enabled
-                  ? "UI preview only — native playback has no EQ applied"
-                  : "Bypassed"}
+                {enabled ? status : "Bypassed · Flat"}
+                {error ? ` · ${error}` : ""}
               </span>
-              <button
-                type="button"
-                className={styles.doneBtn}
-                onClick={onClose}
-              >
+              <button type="button" className={styles.doneBtn} onClick={onClose}>
                 Done
               </button>
             </div>

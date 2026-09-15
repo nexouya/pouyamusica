@@ -92,16 +92,18 @@ pub fn set_engine_muted(state: State<'_, AppState>, muted: bool) -> Result<(), S
 }
 
 /// Read a local audio file as base64 for the Web Audio path (asset-protocol fallback).
+/// Large files are refused — Sound Lab should use the asset protocol fetch instead.
 #[tauri::command]
 pub async fn read_audio_b64(path: String) -> Result<String, String> {
     use base64::Engine as _;
-    const MAX_BYTES: u64 = 180 * 1024 * 1024;
+    // ~24 MB of PCM is already painful as base64 in the webview.
+    const MAX_BYTES: u64 = 24 * 1024 * 1024;
     let bytes = tauri::async_runtime::spawn_blocking(move || {
         let meta = std::fs::metadata(&path).map_err(|e| format!("stat failed: {e}"))?;
         if meta.len() > MAX_BYTES {
             return Err(format!(
-                "audio file too large for base64 load ({} bytes)",
-                meta.len()
+                "audio file too large for base64 load ({} MB). Use the asset protocol path.",
+                meta.len() / (1024 * 1024)
             ));
         }
         std::fs::read(&path).map_err(|e| format!("read failed: {e}"))

@@ -49,11 +49,12 @@
 }
 
 .artBtn {
+  position: relative;
   width: 52px;
   height: 52px;
   flex-shrink: 0;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   background: rgba(255, 255, 255, 0.05);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.1),
@@ -77,6 +78,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 10px;
 }
 
 .artEmpty {
@@ -85,6 +87,7 @@
   justify-content: center;
   width: 100%;
   height: 100%;
+  border-radius: 10px;
   background: linear-gradient(
     135deg,
     rgba(var(--accent-dynamic-rgb), 0.25) 0%,
@@ -98,6 +101,41 @@
   flex: 1;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.livePip {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgba(var(--accent-dynamic-rgb), 0.35);
+  box-shadow: 0 0 0 0 transparent;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.livePip[data-on="true"] {
+  background: rgba(var(--accent-dynamic-rgb), 1);
+  box-shadow: 0 0 12px rgba(var(--accent-dynamic-rgb), 0.9);
+  animation: pipBreathe 1.6s ease-in-out infinite;
+}
+
+@keyframes pipBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.75;
+  }
+}
+
 .title {
   font-size: 13px;
   font-weight: 600;
@@ -106,6 +144,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.3;
+  min-width: 0;
 }
 
 .artist {
@@ -116,6 +155,47 @@
   text-overflow: ellipsis;
   line-height: 1.3;
   margin-top: 1px;
+  padding-left: 15px;
+}
+
+.artBtn {
+  position: relative;
+}
+
+.artRing {
+  position: absolute;
+  inset: -3px;
+  border-radius: 13px;
+  border: 1.5px solid rgba(var(--accent-dynamic-rgb), 0.75);
+  box-shadow:
+    0 0 18px rgba(var(--accent-dynamic-rgb), 0.45),
+    inset 0 0 12px rgba(var(--accent-dynamic-rgb), 0.2);
+  pointer-events: none;
+  animation: ringPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes ringPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+.spectrum {
+  width: 72px;
+  height: 28px;
+  margin-right: 6px;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  mask-image: linear-gradient(90deg, transparent, #000 15%, #000 85%, transparent);
 }
 
 .heart {
@@ -229,7 +309,7 @@
 
 /* — right — */
 .right {
-  width: 168px;
+  width: 250px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -244,7 +324,10 @@
     width: 160px;
   }
   .right {
-    width: 120px;
+    width: 160px;
+  }
+  .spectrum {
+    display: none;
   }
   .center {
     max-width: 420px;

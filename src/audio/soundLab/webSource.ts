@@ -90,6 +90,14 @@ export function liveSpectrum(): number[] {
   return engine.getSpectrum();
 }
 
+export function setEq(gainsDb: number[]) {
+  engine.setEqGains(gainsDb);
+}
+
+export function getEq(): number[] {
+  return engine.getEqGains();
+}
+
 export function disposeWebAudio() {
   engine.pause();
   // Keep AudioContext — can't reliably rebuild; just stop sources

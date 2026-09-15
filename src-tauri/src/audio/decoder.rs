@@ -23,7 +23,9 @@ pub fn open_source(
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
     state.set_sample_rate(sample_rate);
-    state.set_duration_secs(duration);
+    if duration > 0.0 {
+        state.set_duration_secs(duration);
+    }
 
     Ok(SampleTap {
         inner: decoder,
@@ -79,20 +81,53 @@ where
     fn total_duration(&self) -> Option<Duration> {
         self.inner.total_duration()
     }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.frame.clear();
+        self.inner.try_seek(pos)
+    }
 }
 
 /// Extract waveform peaks for the seek bar (normalized 0..1).
+/// Streams samples and never materializes the whole file — safe for multi-hour tracks.
 pub fn extract_peaks(path: &Path, buckets: usize) -> Result<Vec<f32>> {
     let file = File::open(path)?;
     let decoder = Decoder::new(std::io::BufReader::new(file))?;
     let channels = decoder.channels().max(1) as usize;
     let b = buckets.max(1);
 
-    // Stream samples in chunks without accumulating massive memory in RAM
-    let mut intermediate = Vec::new();
+    // Prefer known duration → fixed bucket width in samples.
+    let duration = decoder.total_duration().map(|d| d.as_secs_f64()).unwrap_or(0.0);
+    let sample_rate = decoder.sample_rate().max(1) as f64;
+    let total_samples_est = if duration > 0.0 {
+        (duration * sample_rate * channels as f64) as usize
+    } else {
+        0
+    };
+
+    let mut intermediate: Vec<f32> = Vec::new();
     let mut cur_max = 0.0f32;
     let mut count = 0usize;
-    let chunk_size = 2048 * channels;
+    // Cap intermediate resolution so 3h files stay cheap (~20k peaks max).
+    let target_peaks = if total_samples_est > 0 {
+        ((total_samples_est / (2048 * channels)).max(b)).min(20_000)
+    } else {
+        8_000
+    };
+    let chunk_size = if total_samples_est > 0 {
+        ((total_samples_est / target_peaks).max(256)).min(16_384 * channels)
+    } else {
+        2048 * channels
+    };
+
+    // Hard sample budget as a safety net when duration is unknown.
+    let max_samples = if total_samples_est > 0 {
+        total_samples_est
+    } else {
+        // ~3 hours at 48 kHz stereo
+        48_000 * 2 * 3 * 3600
+    };
+    let mut samples_seen = 0usize;
 
     for s in decoder {
         let val = (s as f32 / 32768.0).abs();
@@ -100,10 +135,14 @@ pub fn extract_peaks(path: &Path, buckets: usize) -> Result<Vec<f32>> {
             cur_max = val;
         }
         count += 1;
+        samples_seen += 1;
         if count >= chunk_size {
             intermediate.push(cur_max);
             cur_max = 0.0;
             count = 0;
+        }
+        if samples_seen >= max_samples {
+            break;
         }
     }
     if count > 0 {
@@ -119,9 +158,11 @@ pub fn extract_peaks(path: &Path, buckets: usize) -> Result<Vec<f32>> {
     let step = intermediate.len() as f32 / b as f32;
     for i in 0..b {
         let start = (i as f32 * step).floor() as usize;
-        let end = (((i + 1) as f32 * step).ceil() as usize).min(intermediate.len()).max(start + 1);
+        let end = (((i + 1) as f32 * step).ceil() as usize)
+            .min(intermediate.len())
+            .max(start + 1);
         let mut p = 0.0f32;
-        for &v in &intermediate[start..end] {
+        for &v in &intermediate[start..end.min(intermediate.len())] {
             if v > p {
                 p = v;
             }

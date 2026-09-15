@@ -4,6 +4,7 @@ import styles from "./NowPlayingBar.module.css";
 import { SeekBar } from "./SeekBar";
 import { VolumeSlider } from "./VolumeSlider";
 import { EqualizerModal } from "./EqualizerModal";
+import { Visualizer } from "./Visualizer";
 import {
   IconEq,
   IconHeart,
@@ -17,6 +18,7 @@ import {
   IconShuffle,
 } from "../icons/Icons";
 import { usePlayerStore } from "../../stores/playerStore";
+import { useSoundLabStore } from "../../stores/soundLabStore";
 
 function Ctrl({
   children,
@@ -60,6 +62,7 @@ export function NowPlayingBar() {
   const toggleFocus = usePlayerStore((s) => s.toggleFocus);
   const liked = usePlayerStore((s) => s.liked);
   const toggleLike = usePlayerStore((s) => s.toggleLikeCurrent);
+  const dspOn = useSoundLabStore((s) => s.webPath);
   const isLiked = current ? liked.includes(current.path) : false;
 
   return (
@@ -73,6 +76,7 @@ export function NowPlayingBar() {
             onClick={() => toggleFocus()}
             aria-label="Focus mode"
             title="Focus mode"
+            data-playing={playing ? "true" : "false"}
           >
             {current?.cover_data_url ? (
               <img className={styles.art} src={current.cover_data_url} alt="" draggable={false} />
@@ -81,10 +85,25 @@ export function NowPlayingBar() {
                 <IconMusic size={18} />
               </span>
             )}
+            {playing && (
+              <motion.span
+                className={styles.artRing}
+                aria-hidden
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+              />
+            )}
           </button>
         <div className={styles.meta}>
-          <div className={styles.title}>{current?.title || "Nothing playing"}</div>
-          <div className={styles.artist}>{current?.artist || "—"}</div>
+          <div className={styles.titleRow}>
+            <span className={styles.livePip} data-on={playing ? "true" : "false"} aria-hidden />
+            <div className={styles.title}>{current?.title || "Nothing playing"}</div>
+          </div>
+          <div className={styles.artist}>
+            {current?.artist || "—"}
+            {dspOn ? " · DSP" : ""}
+          </div>
         </div>
         {current && (
           <button
@@ -138,15 +157,20 @@ export function NowPlayingBar() {
         <SeekBar compact />
       </div>
 
-      {/* Right — tools */}
+      {/* Right — tools + live spectrum */}
       <div className={styles.right}>
+        {current && (
+          <div className={styles.spectrum} aria-hidden>
+            <Visualizer mode="linear" size={72} height={28} />
+          </div>
+        )}
         <Ctrl label="Queue" onClick={toggleQueue} size="sm">
           <IconQueue size={14} />
         </Ctrl>
         <Ctrl
           label="Equalizer"
           size="sm"
-          active={eqOpen}
+          active={eqOpen || dspOn}
           onClick={() => setEqOpen(!eqOpen)}
         >
           <IconEq size={14} />

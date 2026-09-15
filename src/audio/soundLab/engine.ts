@@ -21,6 +21,10 @@ type Chain = {
   input: GainNode;
   presetIn: AudioNode;
   presetOut: AudioNode;
+  /** 10-band graphic EQ always present (gains in dB). */
+  eqBands: BiquadFilterNode[];
+  eqIn: GainNode;
+  eqOut: GainNode;
   shadowLp: BiquadFilterNode;
   panner: PannerNode;
   pannerGain: GainNode;
@@ -28,6 +32,7 @@ type Chain = {
   analyser: AnalyserNode;
   master: GainNode;
   buffer: AudioBuffer | null;
+  bufferPath: string | null;
   source: AudioBufferSourceNode | null;
   startedAt: number;
   offset: number;
@@ -45,6 +50,13 @@ type Chain = {
   onProgress: ((pos: number, dur: number, playing: boolean) => void) | null;
   progressTimer: number | null;
 };
+
+/** Classic 10-band graphic EQ center frequencies. */
+export const EQ_FREQS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000] as const;
+
+/** Refuse decoding multi-hour files into a single AudioBuffer (OOM). */
+const MAX_WEB_DURATION_SEC = 45 * 60;
+const MAX_WEB_BYTES = 80 * 1024 * 1024;
 
 let chain: Chain | null = null;
 
@@ -417,6 +429,25 @@ function ensureCtx(): Chain {
   const input = ctx.createGain();
   input.gain.value = 1;
   const unity = ctx.createGain();
+  // 10-band EQ: input → eqIn → [peaking…] → eqOut
+  const eqIn = ctx.createGain();
+  eqIn.gain.value = 1;
+  const eqOut = ctx.createGain();
+  eqOut.gain.value = 1;
+  const eqBands: BiquadFilterNode[] = EQ_FREQS.map((freq, i) => {
+    const f = ctx.createBiquadFilter();
+    f.type = "peaking";
+    f.frequency.value = freq;
+    f.Q.value = 1.0;
+    f.gain.value = 0;
+    if (i === 0) f.type = "lowshelf";
+    if (i === EQ_FREQS.length - 1) f.type = "highshelf";
+    return f;
+  });
+  for (let i = 0; i < eqBands.length - 1; i++) eqBands[i].connect(eqBands[i + 1]);
+  eqIn.connect(eqBands[0]);
+  eqBands[eqBands.length - 1].connect(eqOut);
+
   const shadowLp = ctx.createBiquadFilter();
   shadowLp.type = "lowpass";
   shadowLp.frequency.value = 18000;
@@ -427,7 +458,6 @@ function ensureCtx(): Chain {
   panner.maxDistance = 10000;
   panner.rolloffFactor = 1;
   panner.coneInnerAngle = 360;
-  // Center front by default
   panner.positionX.value = 0;
   panner.positionY.value = 0;
   panner.positionZ.value = 1;
@@ -445,9 +475,10 @@ function ensureCtx(): Chain {
   const master = ctx.createGain();
   master.gain.value = 1;
 
-  // Always keep a valid wet path (unity until preset applied)
+  // preset wet path is patched into eqIn; EQ always runs after preset
   input.connect(unity);
-  unity.connect(shadowLp);
+  unity.connect(eqIn);
+  eqOut.connect(shadowLp);
   shadowLp.connect(panner);
   panner.connect(pannerGain);
   pannerGain.connect(limiter);
@@ -460,6 +491,9 @@ function ensureCtx(): Chain {
     input,
     presetIn: unity,
     presetOut: unity,
+    eqBands,
+    eqIn,
+    eqOut,
     shadowLp,
     panner,
     pannerGain,
@@ -467,6 +501,7 @@ function ensureCtx(): Chain {
     analyser,
     master,
     buffer: null,
+    bufferPath: null,
     source: null,
     startedAt: 0,
     offset: 0,
@@ -499,7 +534,7 @@ async function rebuildPreset(c: Chain, id: SoundLabPresetId) {
     c.vinyl = null;
   }
   c.workletNode = null;
-  // Disconnect input from old wet chain; keep shadowLp onward
+  // Disconnect input from old wet chain; keep EQ + shadowLp onward
   try {
     c.input.disconnect();
   } catch {
@@ -517,14 +552,14 @@ async function rebuildPreset(c: Chain, id: SoundLabPresetId) {
     c.presetIn = g;
     c.presetOut = g;
     c.input.connect(g);
-    g.connect(c.shadowLp);
+    g.connect(c.eqIn);
     applyRate(c, 1);
   } else {
     const built = await buildPreset(c.ctx, id as Exclude<SoundLabPresetId, "off">, c);
     c.presetIn = built.in;
     c.presetOut = built.out;
     c.input.connect(built.in);
-    built.out.connect(c.shadowLp);
+    built.out.connect(c.eqIn);
     if (id === "nightcore") applyRate(c, 1.2);
     else if (id === "slowed") applyRate(c, 0.8);
     else if (id === "lofi") {
@@ -612,12 +647,54 @@ export async function initEngine(): Promise<void> {
 export async function loadTrack(path: string): Promise<number> {
   const c = ensureCtx();
   if (c.ctx.state === "suspended") await c.ctx.resume();
+
+  // Reuse already-decoded buffer when switching tools on the same track (8D / preset).
+  if (c.buffer && c.bufferPath === path && c.buffer.duration > 0) {
+    return c.buffer.duration;
+  }
+
   stopSource(c, false);
   c.offset = 0;
   const raw = await fetchArrayBuffer(path);
+  if (raw.byteLength > MAX_WEB_BYTES) {
+    throw new Error(
+      `File too large for Sound Lab DSP (${Math.round(raw.byteLength / 1024 / 1024)} MB). Native playback still works.`,
+    );
+  }
   const buffer = await c.ctx.decodeAudioData(raw.slice(0));
+  if (buffer.duration > MAX_WEB_DURATION_SEC) {
+    throw new Error(
+      `Track is ${Math.round(buffer.duration / 60)} min — Sound Lab buffers only up to 45 min. Native playback still works.`,
+    );
+  }
   c.buffer = buffer;
+  c.bufferPath = path;
   return buffer.duration;
+}
+
+/** Apply 10-band EQ gains in dB (length 10). */
+export function setEqGains(gainsDb: number[]): void {
+  const c = ensureCtx();
+  const t = c.ctx.currentTime;
+  for (let i = 0; i < c.eqBands.length; i++) {
+    const g = Math.max(-12, Math.min(12, gainsDb[i] ?? 0));
+    try {
+      c.eqBands[i].gain.setTargetAtTime(g, t, 0.03);
+    } catch {
+      c.eqBands[i].gain.value = g;
+    }
+  }
+}
+
+export function getEqGains(): number[] {
+  if (!chain) return new Array(10).fill(0);
+  return chain.eqBands.map((f) => f.gain.value);
+}
+
+export function hasBuffer(path?: string): boolean {
+  if (!chain?.buffer) return false;
+  if (path) return chain.bufferPath === path;
+  return true;
 }
 
 export async function applyPreset(id: SoundLabPresetId): Promise<void> {
@@ -629,10 +706,16 @@ export async function applyPreset(id: SoundLabPresetId): Promise<void> {
 export async function setSpatial(enabled: boolean, orbitPeriod: number): Promise<void> {
   const c = ensureCtx();
   c.orbitPeriod = Math.min(14, Math.max(8, orbitPeriod));
+  const was = c.spatial;
   c.spatial = enabled;
   if (enabled) {
     if (c.ctx.state === "suspended") await c.ctx.resume();
+    // If we already have audio and were playing, keep it running while orbit starts.
     startOrbit(c);
+    if (was !== enabled) {
+      // Nudge orbit so 8D is immediately audible after a switch.
+      c.theta = c.theta || 0;
+    }
   } else {
     stopOrbit(c);
     const t = c.ctx.currentTime;

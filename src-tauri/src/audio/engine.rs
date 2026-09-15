@@ -93,12 +93,21 @@ impl EngineCore {
             .path
             .clone()
             .ok_or_else(|| anyhow!("no track loaded"))?;
-        let source = open_source(&path, state.clone())?;
-        let skipped = source
-            .skip_duration(std::time::Duration::from_secs_f64(skip_secs.max(0.0)));
+        let mut source = open_source(&path, state.clone())?;
+        let skip = std::time::Duration::from_secs_f64(skip_secs.max(0.0));
         let new_sink = Sink::try_new(&self.handle).map_err(|e| anyhow!("{e}"))?;
         new_sink.set_volume(self.volume);
-        new_sink.append(skipped);
+        // Prefer container seek (fast on long tracks). Fall back to skip-from-zero.
+        if skip > std::time::Duration::ZERO {
+            if source.try_seek(skip).is_ok() {
+                new_sink.append(source);
+            } else {
+                let fallback = open_source(&path, state.clone())?.skip_duration(skip);
+                new_sink.append(fallback);
+            }
+        } else {
+            new_sink.append(source);
+        }
         if autoplay {
             new_sink.play();
             self.playing = true;

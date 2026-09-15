@@ -55,7 +55,8 @@ export function TrackRow({
     >
       <span className={`mono ${styles.rowIdx}`}>
         {isPlaying ? (
-          <span className={styles.eqDots} aria-hidden>
+          <span className={styles.eqDots} aria-label="Now playing">
+            <span />
             <span />
             <span />
             <span />

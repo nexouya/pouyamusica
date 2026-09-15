@@ -9,6 +9,7 @@ import {
   pauseWeb,
   playWeb,
   seekWeb,
+  setEq,
   setWebPlaybackHandlers,
   setWebVolume,
   updatePreset,
@@ -27,20 +28,28 @@ type SoundLabStore = {
   orbitPeriod: number;
   /** Web Audio owns the audible path. */
   webPath: boolean;
+  /** 10-band EQ gains (dB). Non-flat forces web path. */
+  eqGains: number[];
   spectrum: number[];
   lastEngageError: string | null;
   setPreset: (id: SoundLabPresetId) => Promise<void>;
   setSpatial: (on: boolean) => Promise<void>;
   setOrbitPeriod: (period: number) => Promise<void>;
+  setEqGains: (gains: number[]) => Promise<void>;
   pollSpectrum: () => void;
   syncPlaybackPath: () => Promise<void>;
-  /** True when a preset or 8D wants the Web Audio path. */
+  /** True when a preset, 8D, or non-flat EQ wants the Web Audio path. */
   wantsWeb: () => boolean;
   dispose: () => void;
 };
 
-export function labWantsWeb(s: { preset: SoundLabPresetId; spatial: boolean }) {
-  return s.preset !== "off" || s.spatial;
+export function labWantsWeb(s: {
+  preset: SoundLabPresetId;
+  spatial: boolean;
+  eqGains?: number[];
+}) {
+  const eqOn = (s.eqGains ?? []).some((g) => Math.abs(g) > 0.05);
+  return s.preset !== "off" || s.spatial || eqOn;
 }
 
 /** Mute native engine while Web Audio owns output (never persists volume 0). */
@@ -79,10 +88,22 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
   spatial: false,
   orbitPeriod: 10,
   webPath: false,
+  eqGains: new Array(10).fill(0),
   spectrum: new Array(32).fill(0),
   lastEngageError: null,
 
   wantsWeb: () => labWantsWeb(get()),
+
+  setEqGains: async (gains) => {
+    const next = gains.slice(0, 10).map((g) => Math.max(-12, Math.min(12, g)));
+    while (next.length < 10) next.push(0);
+    set({ eqGains: next });
+    if (get().webPath) {
+      setEq(next);
+      return;
+    }
+    await get().syncPlaybackPath();
+  },
 
   setPreset: async (id) => {
     set({ preset: id, lastEngageError: null });
@@ -169,6 +190,8 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
           lab.orbitPeriod,
           autoplay,
         );
+        // Re-apply EQ after engage (graph may be fresh).
+        setEq(lab.eqGains);
         set({ webPath: true, lastEngageError: null });
         usePlayerStore.setState({
           playing: autoplay,
@@ -240,6 +263,7 @@ export async function webPlayTrack(path: string, volume: number) {
     lab.orbitPeriod,
     true,
   );
+  setEq(lab.eqGains);
   useSoundLabStore.setState({ webPath: true, lastEngageError: null });
   return webDuration();
 }
