@@ -25,8 +25,53 @@ function selectedProviders() {
 
 const chain = createChain({ providers: selectedProviders() });
 
-export function search(query, limit = 10) {
-  return chain.search(query, limit);
+function dedupePush(target, seen, items) {
+  for (const s of items || []) {
+    if (!s?.videoId || !s?.title) continue;
+    if (seen.has(s.videoId)) continue;
+    seen.add(s.videoId);
+    target.push(s);
+  }
+}
+
+/**
+ * Strong search: merge YouTube Music + yt-dlp web search so results are deep
+ * and not limited to one shelf type.
+ */
+export async function search(query, limit = 25) {
+  const cap = Math.min(Math.max(Number(limit) || 25, 1), 40);
+  const seen = new Set();
+  const songs = [];
+
+  // Primary: provider chain (music-first).
+  try {
+    dedupePush(songs, seen, await chain.search(query, cap));
+  } catch (e) {
+    /* continue with fallbacks */
+  }
+
+  // Secondary: direct yt-dlp web search for depth / official uploads.
+  if (songs.length < cap && ENGINE !== 'innertube') {
+    const remaining = cap - songs.length;
+    try {
+      const extra = await ytdlp.search(query, remaining + 8);
+      dedupePush(songs, seen, extra);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  // Tertiary: yt-dlp with "official audio" bias if still thin.
+  if (songs.length < Math.min(8, cap) && ENGINE !== 'innertube') {
+    try {
+      const extra = await ytdlp.search(`${query} official audio`, cap);
+      dedupePush(songs, seen, extra);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  return songs.slice(0, cap);
 }
 
 export function status() {

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TrackMeta, YtSong } from "../types";
 import { usePlayerStore } from "./playerStore";
 import { useLibraryStore } from "./libraryStore";
+import { useUiStore } from "./uiStore";
 import { updateAudioVisualData } from "../core/events/audioVisualBus";
 
 const CORE_PORT = 17321;
@@ -25,11 +26,12 @@ type OnlineState = {
   playing: boolean;
   position: number;
   duration: number;
+  buffering: boolean;
   downloading: Record<string, boolean>;
   downloadNote: string | null;
   audio: HTMLAudioElement | null;
   setQuery: (q: string) => void;
-  ensureCore: () => Promise<void>;
+  ensureCore: () => Promise<boolean>;
   search: (q?: string) => Promise<void>;
   playSong: (song: YtSong) => Promise<void>;
   toggleOnlinePlay: () => Promise<void>;
@@ -41,6 +43,10 @@ type OnlineState = {
 let audioEl: HTMLAudioElement | null = null;
 let progressTimer: number | null = null;
 let spectrumRaf = 0;
+let audioCtx: AudioContext | null = null;
+let mediaSource: MediaElementAudioSourceNode | null = null;
+let analyser: AnalyserNode | null = null;
+let smoothBands = new Float32Array(32);
 
 function baseUrl(core: OnlineState["core"]): string {
   if (core?.running && core.base_url) return core.base_url.replace(/\/$/, "");
@@ -67,9 +73,75 @@ function ytToTrack(song: YtSong, baseUrlStr: string): TrackMeta {
     duration_secs: parseDuration(song.duration),
     track_number: 0,
     cover_data_url: song.thumbnail || null,
-    palette: ["#FF0033", "#222222"],
+    palette: ["#FF0033", "#1a1a1a"],
     accent: "#FF4D6D",
   };
+}
+
+function teardownGraph() {
+  cancelAnimationFrame(spectrumRaf);
+  try {
+    mediaSource?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  try {
+    analyser?.disconnect();
+  } catch {
+    /* ignore */
+  }
+  mediaSource = null;
+  analyser = null;
+}
+
+function attachRealAnalyser(el: HTMLAudioElement) {
+  teardownGraph();
+  try {
+    if (!audioCtx) {
+      audioCtx = new AudioContext({ latencyHint: "playback" });
+    }
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    // CORS is enabled on stream-core — MediaElementSource works.
+    mediaSource = audioCtx.createMediaElementSource(el);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.82;
+    mediaSource.connect(analyser);
+    // Do NOT connect to destination twice — element already outputs.
+    // Analyser is a tap only if we also connect analyser → destination.
+    // createMediaElementSource routes element output into the graph, so we
+    // MUST reconnect to destination or audio becomes silent.
+    analyser.connect(audioCtx.destination);
+
+    const freq = new Uint8Array(analyser.frequencyBinCount);
+    const paint = () => {
+      if (!analyser || !audioEl || audioEl.paused) {
+        for (let i = 0; i < 32; i++) {
+          smoothBands[i] *= 0.88;
+        }
+      } else {
+        analyser.getByteFrequencyData(freq);
+        const n = freq.length;
+        for (let i = 0; i < 32; i++) {
+          const a = Math.floor(Math.pow(i / 32, 1.55) * n * 0.72);
+          const b = Math.max(a + 1, Math.floor(Math.pow((i + 1) / 32, 1.55) * n * 0.72));
+          let peak = 0;
+          for (let j = a; j < b && j < n; j++) peak = Math.max(peak, freq[j]);
+          const target = Math.min(1, (peak / 255) * 1.15);
+          // Heavy smoothing — kills flicker.
+          smoothBands[i] += (target - smoothBands[i]) * 0.18;
+        }
+      }
+      const bands = Array.from(smoothBands);
+      const rms = Math.sqrt(bands.reduce((a, b) => a + b * b, 0) / bands.length);
+      updateAudioVisualData(bands, rms);
+      spectrumRaf = requestAnimationFrame(paint);
+    };
+    cancelAnimationFrame(spectrumRaf);
+    paint();
+  } catch (e) {
+    console.warn("[online] analyser attach failed", e);
+  }
 }
 
 export const useOnlineStore = create<OnlineState>((set, get) => ({
@@ -83,6 +155,7 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
   playing: false,
   position: 0,
   duration: 0,
+  buffering: false,
   downloading: {},
   downloadNote: null,
   audio: null,
@@ -95,18 +168,30 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       if (!status.running) {
         status = await invoke<StreamCoreStatus>("start_stream_core");
       }
-      set({ core: status, coreError: null });
+      // Verify HTTP health, not just process alive.
+      const base = (status.base_url || `http://127.0.0.1:${status.port}`).replace(/\/$/, "");
+      const health = await fetch(`${base}/healthz`).then((r) => r.json()).catch(() => null);
+      if (!health?.ok) {
+        set({
+          core: status,
+          coreError: "Stream core process is up but /healthz failed. Retrying…",
+        });
+        return false;
+      }
+      set({ core: { ...status, base_url: base }, coreError: null });
+      return true;
     } catch (e) {
       set({ coreError: String(e), core: null });
+      return false;
     }
   },
 
   search: async (q) => {
     const query = (q ?? get().query).trim();
     if (!query) return;
-    await get().ensureCore();
+    const ok = await get().ensureCore();
     const core = get().core;
-    if (!core?.running) {
+    if (!ok || !core?.running) {
       set({
         searchError: get().coreError || "Stream core is not running. Install Node.js 18+.",
       });
@@ -114,23 +199,47 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     }
     set({ searching: true, searchError: null, query });
     try {
-      const url = `${baseUrl(core)}/api/search?q=${encodeURIComponent(query)}`;
+      const url = `${baseUrl(core)}/api/search?q=${encodeURIComponent(query)}&limit=25`;
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`search failed (${res.status})`);
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`search failed (${res.status}) ${body.slice(0, 120)}`);
+      }
       const data = (await res.json()) as { songs?: YtSong[] };
-      set({ results: data.songs || [], searching: false });
+      let songs = data.songs || [];
+
+      // If thin, widen with a second query.
+      if (songs.length < 8) {
+        const url2 = `${baseUrl(core)}/api/search?q=${encodeURIComponent(query + " official audio")}&limit=25`;
+        const res2 = await fetch(url2).catch(() => null);
+        if (res2?.ok) {
+          const data2 = (await res2.json()) as { songs?: YtSong[] };
+          const seen = new Set(songs.map((s) => s.videoId));
+          for (const s of data2.songs || []) {
+            if (!seen.has(s.videoId)) {
+              seen.add(s.videoId);
+              songs.push(s);
+            }
+          }
+        }
+      }
+
+      set({ results: songs, searching: false });
     } catch (e) {
       set({ searching: false, searchError: String(e), results: [] });
     }
   },
 
   playSong: async (song) => {
-    const core = get().core;
-    if (!core?.running) await get().ensureCore();
+    const ok = await get().ensureCore();
+    if (!ok) {
+      set({ searchError: get().coreError || "Stream core unavailable" });
+      return;
+    }
     const base = baseUrl(get().core);
     const track = ytToTrack(song, base);
 
-    // Stop local files so only one engine is audible.
+    // Stop local / Sound Lab engines.
     try {
       const { api } = await import("../core/api");
       await api.pause();
@@ -147,23 +256,32 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       /* ignore */
     }
 
+    teardownGraph();
     if (audioEl) {
       try {
         audioEl.pause();
+        audioEl.removeAttribute("src");
+        audioEl.load();
       } catch {
         /* ignore */
       }
-      audioEl.src = "";
     }
 
     const el = new Audio();
+    // CORS required for MediaElementSource analyser (stream-core sends ACAO).
     el.crossOrigin = "anonymous";
     el.preload = "auto";
     el.src = `${base}/play/${song.videoId}`;
     el.volume = Math.max(0, Math.min(1, usePlayerStore.getState().volume || 0.8));
 
     audioEl = el;
-    set({ audio: el, currentId: song.videoId, position: 0, duration: parseDuration(song.duration) });
+    set({
+      audio: el,
+      currentId: song.videoId,
+      position: 0,
+      duration: parseDuration(song.duration),
+      buffering: true,
+    });
 
     usePlayerStore.setState({
       current: track,
@@ -173,6 +291,7 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
       waveform: [],
       queue: [track],
     });
+    useUiStore.getState().setAccent("#FF4D6D");
 
     el.onloadedmetadata = () => {
       const dur = el.duration && Number.isFinite(el.duration) ? el.duration : 0;
@@ -181,13 +300,23 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
         usePlayerStore.setState({ duration: dur });
       }
     };
+    el.oncanplay = () => set({ buffering: false });
+    el.onwaiting = () => set({ buffering: true });
+    el.onplaying = () => {
+      set({ buffering: false, playing: true });
+      usePlayerStore.setState({ playing: true });
+    };
     el.onended = () => {
       set({ playing: false });
       usePlayerStore.setState({ playing: false });
-      cancelAnimationFrame(spectrumRaf);
+      for (let i = 0; i < 32; i++) smoothBands[i] = 0;
     };
     el.onerror = () => {
-      set({ playing: false, searchError: "Stream failed — try another result or check network/proxy." });
+      set({
+        playing: false,
+        buffering: false,
+        searchError: "Stream failed — try another result or check network/proxy.",
+      });
       usePlayerStore.setState({ playing: false });
       useLibraryStore.setState({ error: "YouTube stream failed" });
     };
@@ -199,36 +328,36 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
         position: audioEl.currentTime,
         playing: !audioEl.paused,
       });
-      progressTimer = window.setTimeout(tickProgress, 250);
+      progressTimer = window.setTimeout(tickProgress, 200);
     };
     if (progressTimer) window.clearTimeout(progressTimer);
     tickProgress();
 
-    // Fake-ish live spectrum from volume envelope so FocusMode stays alive.
-    const paint = () => {
-      if (!audioEl || audioEl.paused) {
-        updateAudioVisualData(new Array(32).fill(0), 0);
-        spectrumRaf = requestAnimationFrame(paint);
-        return;
-      }
-      const t = audioEl.currentTime;
-      const bands = new Array(32).fill(0).map((_, i) => {
-        const x = Math.sin(t * (2 + i * 0.13) + i) * 0.5 + 0.5;
-        const y = Math.sin(t * (0.7 + i * 0.05)) * 0.5 + 0.5;
-        return Math.max(0, Math.min(1, x * 0.55 + y * 0.45));
-      });
-      const rms = Math.sqrt(bands.reduce((a, b) => a + b * b, 0) / bands.length);
-      updateAudioVisualData(bands, rms);
-      spectrumRaf = requestAnimationFrame(paint);
-    };
-    cancelAnimationFrame(spectrumRaf);
-    paint();
-
     try {
+      // Wait briefly for enough data so play() is reliable on slow networks.
+      if (el.readyState < 2) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            el.removeEventListener("canplay", done);
+            el.removeEventListener("loadeddata", done);
+            resolve();
+          };
+          el.addEventListener("canplay", done);
+          el.addEventListener("loadeddata", done);
+          setTimeout(done, 8000);
+        });
+      }
       await el.play();
+      attachRealAnalyser(el);
       set({ playing: true });
     } catch (e) {
-      set({ playing: false, searchError: `Autoplay blocked: ${e}` });
+      set({ playing: false, searchError: `Playback failed: ${e}` });
+      // Analyser after play() if attach-before failed due to autoplay policy.
+      try {
+        attachRealAnalyser(el);
+      } catch {
+        /* ignore */
+      }
     }
   },
 
@@ -236,7 +365,13 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
     const el = get().audio;
     if (!el) return;
     if (el.paused) {
-      await el.play();
+      try {
+        if (audioCtx?.state === "suspended") await audioCtx.resume();
+        await el.play();
+      } catch (e) {
+        set({ searchError: String(e) });
+        return;
+      }
       set({ playing: true });
       usePlayerStore.setState({ playing: true });
     } else {
@@ -249,14 +384,18 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
   seekOnline: (secs) => {
     const el = get().audio;
     if (!el) return;
-    el.currentTime = Math.max(0, secs);
+    try {
+      el.currentTime = Math.max(0, secs);
+    } catch {
+      /* ignore */
+    }
     set({ position: el.currentTime });
     usePlayerStore.setState({ position: el.currentTime });
   },
 
   downloadSong: async (song) => {
-    await get().ensureCore();
-    if (!get().core?.running) {
+    const ok = await get().ensureCore();
+    if (!ok) {
       set({ downloadNote: "Stream core not running" });
       return;
     }
@@ -287,17 +426,19 @@ export const useOnlineStore = create<OnlineState>((set, get) => ({
 
   dispose: () => {
     if (progressTimer) window.clearTimeout(progressTimer);
-    cancelAnimationFrame(spectrumRaf);
+    teardownGraph();
     if (audioEl) {
       try {
         audioEl.pause();
-        audioEl.src = "";
+        audioEl.removeAttribute("src");
+        audioEl.load();
       } catch {
         /* ignore */
       }
     }
     audioEl = null;
-    set({ audio: null, playing: false, currentId: null });
+    smoothBands = new Float32Array(32);
+    set({ audio: null, playing: false, currentId: null, buffering: false });
   },
 }));
 

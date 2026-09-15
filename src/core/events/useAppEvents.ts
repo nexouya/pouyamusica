@@ -44,13 +44,23 @@ function webOwnsTransport(): boolean {
   return useSoundLabStore.getState().webPath === true;
 }
 
+/** Online (YouTube) HTMLAudio owns transport. */
+function onlineOwnsTransport(): boolean {
+  const cur = usePlayerStore.getState().current;
+  return !!cur && (cur.id?.startsWith("yt:") || cur.path?.includes("/play/"));
+}
+
+function foreignTransportOwns(): boolean {
+  return webOwnsTransport() || onlineOwnsTransport();
+}
+
 export function useAppEvents() {
   useEffect(() => {
     const unsubs: Array<Promise<Unsub> | Unsub> = [];
 
     unsubs.push(
       listen<FftFrame>("fft-data", (e) => {
-        if (webOwnsTransport()) return;
+        if (foreignTransportOwns()) return;
         if (e.payload?.bands) {
           updateAudioVisualData(e.payload.bands, e.payload.rms);
         }
@@ -62,8 +72,8 @@ export function useAppEvents() {
       listen<PlaybackProgress>("playback-progress", (e) => {
         const p = e.payload;
         if (!p) return;
-        if (webOwnsTransport()) {
-          // Web path already drives position/playing/volume.
+        if (foreignTransportOwns()) {
+          // Web / Online path already drives position/playing/volume.
           return;
         }
         const st = usePlayerStore.getState();
@@ -77,7 +87,7 @@ export function useAppEvents() {
 
     unsubs.push(
       listen("playback-ended", (e) => {
-        if (webOwnsTransport()) return;
+        if (foreignTransportOwns()) return;
         const st = usePlayerStore.getState();
         if (st.repeat === "one") {
           void st.seek(0).then(() => api.play()).then(() => st.setPlaying(true));

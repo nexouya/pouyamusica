@@ -32,6 +32,7 @@ export function OnlineView() {
   const playing = useOnlineStore((s) => s.playing);
   const downloading = useOnlineStore((s) => s.downloading);
   const downloadNote = useOnlineStore((s) => s.downloadNote);
+  const buffering = useOnlineStore((s) => s.buffering);
   const ensureCore = useOnlineStore((s) => s.ensureCore);
   const search = useOnlineStore((s) => s.search);
   const setQuery = useOnlineStore((s) => s.setQuery);
@@ -98,6 +99,9 @@ export function OnlineView() {
         </div>
         {searchError && <p className={styles.error}>{searchError}</p>}
         {downloadNote && <p className={styles.note}>{downloadNote}</p>}
+        {buffering && currentId && (
+          <p className={styles.note}>Buffering stream… first play can take a few seconds.</p>
+        )}
       </header>
 
       <div className={styles.list}>

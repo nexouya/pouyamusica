@@ -86,7 +86,13 @@ export async function createYouTubeStreamer(options = {}) {
  */
 export async function createStandaloneApp(options = {}) {
   const app = express();
-  app.use(cors());
+  app.use(
+    cors({
+      origin: true,
+      methods: ['GET', 'HEAD', 'OPTIONS'],
+      exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges', 'Content-Disposition'],
+    })
+  );
   app.use(express.json());
 
   const ytRouter = await createYouTubeStreamer(options);

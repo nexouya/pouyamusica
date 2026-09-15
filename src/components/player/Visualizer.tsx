@@ -54,8 +54,10 @@ export function Visualizer({
       const liveBands = getAudioVisualBands();
       for (let i = 0; i < 32; i++) {
         const target = playing ? (liveBands[i] ?? 0) : 0;
-        display[i] += (target - display[i]) * 0.32;
-        peak[i] = Math.max(peak[i] * (1 - dt * 1.8), display[i]);
+        // Slow attack, slower release — kills flicker.
+        const k = target > display[i] ? 0.22 : 0.1;
+        display[i] += (target - display[i]) * k;
+        peak[i] = Math.max(peak[i] * (1 - dt * 1.2), display[i]);
       }
 
       const [r, g, b] = accentRgb.split(",").map((n) => parseInt(n.trim(), 10) || 124);

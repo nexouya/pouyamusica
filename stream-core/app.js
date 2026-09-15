@@ -92,9 +92,10 @@ export function createApp({ search, resolveStream, download, status, fetch: fetc
   app.get('/api/search', async (req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 200) : '';
     if (!q) return res.status(400).json({ error: 'query parameter q is required' });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 40);
 
     try {
-      const songs = await search(q, 10);
+      const songs = await search(q, limit);
       if (Array.isArray(songs)) {
         for (const s of songs) {
           if (s.videoId && s.title) {

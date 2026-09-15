@@ -140,19 +140,39 @@ export function collectSongs(searchResult) {
   return songs;
 }
 
-export async function search(query, limit = 10) {
+export async function search(query, limit = 25) {
   const yt = await getSession();
-  const result = await yt.music.search(query, { type: 'song' });
-
+  const cap = Math.min(Math.max(Number(limit) || 25, 1), 40);
   const seen = new Set();
   const songs = [];
-  for (const song of collectSongs(result)) {
-    if (seen.has(song.videoId)) continue;
-    seen.add(song.videoId);
-    songs.push(song);
-    if (songs.length >= limit) break;
+
+  const pushAll = (items) => {
+    for (const song of items) {
+      if (seen.has(song.videoId)) continue;
+      seen.add(song.videoId);
+      songs.push(song);
+      if (songs.length >= cap) return true;
+    }
+    return false;
+  };
+
+  // Songs shelf first (cleanest metadata).
+  try {
+    const songsResult = await yt.music.search(query, { type: 'song' });
+    if (pushAll(collectSongs(songsResult))) return songs.slice(0, cap);
+  } catch {
+    /* fall through */
   }
-  return songs;
+
+  // Videos shelf fills the rest (covers, live, uploads).
+  try {
+    const videosResult = await yt.music.search(query, { type: 'video' });
+    if (pushAll(collectSongs(videosResult))) return songs.slice(0, cap);
+  } catch {
+    /* ignore */
+  }
+
+  return songs.slice(0, cap);
 }
 
 // The WEB client sometimes serves formats that need a cipher the browser can't
