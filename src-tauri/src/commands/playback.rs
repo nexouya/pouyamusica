@@ -1,9 +1,19 @@
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::library::scanner::read_track;
 
 use super::AppState;
+
+/// Cleans Windows extended prefixes and trims whitespace/quotes
+pub fn normalize_audio_path(p: &str) -> PathBuf {
+    let mut s = p.trim().trim_matches('"');
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        s = stripped;
+    }
+    PathBuf::from(s)
+}
 
 #[derive(Debug, Serialize)]
 pub struct PlaybackStatus {
@@ -24,12 +34,14 @@ pub fn load_track(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<crate::library::TrackMeta, String> {
-    let meta = read_track(std::path::Path::new(&path)).map_err(|e| {
+    let clean_path = normalize_audio_path(&path);
+    let clean_str = clean_path.to_string_lossy().to_string();
+    let meta = read_track(&clean_path).map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         msg
     })?;
-    if let Err(e) = state.engine.load_track(&path) {
+    if let Err(e) = state.engine.load_track(&clean_str) {
         let msg = engine_err(e);
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         return Err(msg);
@@ -96,17 +108,18 @@ pub fn set_engine_muted(state: State<'_, AppState>, muted: bool) -> Result<(), S
 #[tauri::command]
 pub async fn read_audio_b64(path: String) -> Result<String, String> {
     use base64::Engine as _;
+    let clean_path = normalize_audio_path(&path);
     // ~24 MB of PCM is already painful as base64 in the webview.
     const MAX_BYTES: u64 = 24 * 1024 * 1024;
     let bytes = tauri::async_runtime::spawn_blocking(move || {
-        let meta = std::fs::metadata(&path).map_err(|e| format!("stat failed: {e}"))?;
+        let meta = std::fs::metadata(&clean_path).map_err(|e| format!("stat failed: {e}"))?;
         if meta.len() > MAX_BYTES {
             return Err(format!(
                 "audio file too large for base64 load ({} MB). Use the asset protocol path.",
                 meta.len() / (1024 * 1024)
             ));
         }
-        std::fs::read(&path).map_err(|e| format!("read failed: {e}"))
+        std::fs::read(&clean_path).map_err(|e| format!("read failed: {e}"))
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -132,8 +145,10 @@ pub fn get_playback_status(state: State<'_, AppState>) -> PlaybackStatus {
 
 #[tauri::command]
 pub async fn get_waveform(state: State<'_, AppState>, path: String) -> Result<Vec<f32>, String> {
+    let clean_path = normalize_audio_path(&path);
+    let clean_str = clean_path.to_string_lossy().to_string();
     let engine = state.engine.clone();
-    tauri::async_runtime::spawn_blocking(move || engine.peaks(&path, 240).map_err(|e| e.to_string()))
+    tauri::async_runtime::spawn_blocking(move || engine.peaks(&clean_str, 240).map_err(|e| e.to_string()))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -148,13 +163,15 @@ fn play_order(state: &AppState) -> Vec<String> {
 }
 
 fn find_track(state: &AppState, path: &str) -> Option<crate::library::TrackMeta> {
+    let clean = normalize_audio_path(path);
+    let clean_str = clean.to_string_lossy();
     state
         .library
         .lock()
         .iter()
-        .find(|t| t.path == path)
+        .find(|t| t.path == path || t.path == clean_str)
         .cloned()
-        .or_else(|| read_track(std::path::Path::new(path)).ok())
+        .or_else(|| read_track(&clean).ok())
 }
 
 #[tauri::command]
@@ -163,18 +180,19 @@ pub fn play_track(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<crate::library::TrackMeta, String> {
-    let path_ref = std::path::Path::new(&path);
-    if !path_ref.exists() {
-        let msg = format!("file not found: {path}");
+    let clean_path = normalize_audio_path(&path);
+    let clean_str = clean_path.to_string_lossy().to_string();
+    if !clean_path.exists() {
+        let msg = format!("file not found: {}", clean_path.display());
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         return Err(msg);
     }
-    let meta = read_track(path_ref).map_err(|e| {
+    let meta = read_track(&clean_path).map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         msg
     })?;
-    state.engine.load_track(&path).map_err(|e| {
+    state.engine.load_track(&clean_str).map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit("engine-error", serde_json::json!({ "message": msg.clone() }));
         msg
@@ -185,7 +203,7 @@ pub fn play_track(
         msg
     })?;
     let order = play_order(&state);
-    let idx = order.iter().position(|p| p == &path);
+    let idx = order.iter().position(|p| p == &path || p == &clean_str);
     *state.current_index.lock() = idx;
     state.persist();
     Ok(meta)

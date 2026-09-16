@@ -95,20 +95,6 @@
   border-radius: 999px;
 }
 
-.rail {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 3px;
-  margin-top: -1.5px;
-  border-radius: 999px;
-  transform-origin: left center;
-  transform: scaleX(0);
-  box-shadow: 0 0 10px rgba(var(--accent-dynamic-rgb), 0.5);
-  pointer-events: none;
-}
-
 .trackCompact::before {
   content: "";
   position: absolute;
@@ -122,19 +108,29 @@
   pointer-events: none;
 }
 
+.rail {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(var(--accent-dynamic-rgb), 0.5);
+  pointer-events: none;
+}
+
 .knob {
   position: absolute;
   top: 50%;
   width: 12px;
   height: 12px;
-  margin: -6px 0 0 -6px;
   border-radius: 50%;
   background: var(--text-solid);
   box-shadow:
     0 0 0 2px rgba(var(--accent-dynamic-rgb), 0.5),
     0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%) scale(0.85);
   opacity: 0;
-  transform: scale(0.85);
   transition:
     opacity 120ms ease,
     transform 120ms ease;
@@ -144,7 +140,7 @@
 .trackCompact:hover .knob,
 .scrubbing .knob {
   opacity: 1;
-  transform: scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .hoverLine {

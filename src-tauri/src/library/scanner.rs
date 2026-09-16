@@ -134,9 +134,18 @@ pub fn read_track(path: &Path) -> Result<TrackMeta> {
         palette = vec![accent.clone(), "#2A3344".into()];
     }
 
+    let path_str = {
+        let s = path.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix(r"\\?\") {
+            stripped.to_string()
+        } else {
+            s.to_string()
+        }
+    };
+
     Ok(TrackMeta {
         id: make_id(path),
-        path: path.to_string_lossy().to_string(),
+        path: path_str,
         title,
         artist,
         album,

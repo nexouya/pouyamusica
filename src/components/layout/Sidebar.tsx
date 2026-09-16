@@ -17,7 +17,6 @@ export function Sidebar() {
   const setQuery = useLibraryStore((s) => s.setQuery);
   const tracks = useLibraryStore((s) => s.tracks);
   const playTrack = usePlayerStore((s) => s.playTrack);
-  const currentId = usePlayerStore((s) => s.current?.id);
   const nav = listNavFeatures();
   const playlists = usePlaylistStore((s) => s.playlists);
   const refreshPlaylists = usePlaylistStore((s) => s.refresh);
@@ -137,36 +136,46 @@ export function Sidebar() {
 
       <div className={styles.sectionLabel}>Albums</div>
       <div className={styles.playlistScroll}>
-        {albums.map((t, i) => (
-          <motion.button
-            key={t.id}
-            type="button"
-            className={`${styles.playlistItem} ${currentId === t.id ? styles.playlistActive : ""}`}
-            onClick={() => void playTrack(t)}
-            whileHover={{ x: 3, backgroundColor: "rgba(255,255,255,0.06)" }}
-            whileTap={{ scale: 0.98 }}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 24,
-              delay: 0.2 + i * 0.03,
-            }}
-          >
-            {t.cover_data_url ? (
-              <img className={styles.thumb} src={t.cover_data_url} alt="" draggable={false} />
-            ) : (
-              <span className={`${styles.thumb} ${styles.thumbIcon}`} aria-hidden>
-                <IconMusic size={13} />
+        {albums.map((t, i) => {
+          const albumTracks = tracks.filter((x) => x.album === t.album);
+          const isCurrentAlbum = usePlayerStore.getState().current?.album === t.album;
+          return (
+            <motion.button
+              key={t.album || t.id}
+              type="button"
+              className={`${styles.playlistItem} ${isCurrentAlbum ? styles.playlistActive : ""}`}
+              onClick={() => {
+                if (albumTracks.length > 0) {
+                  void playTrack(albumTracks[0], albumTracks);
+                } else {
+                  void playTrack(t);
+                }
+              }}
+              whileHover={{ x: 3, backgroundColor: "rgba(255,255,255,0.06)" }}
+              whileTap={{ scale: 0.98 }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 24,
+                delay: 0.2 + i * 0.03,
+              }}
+            >
+              {t.cover_data_url ? (
+                <img className={styles.thumb} src={t.cover_data_url} alt="" draggable={false} />
+              ) : (
+                <span className={`${styles.thumb} ${styles.thumbIcon}`} aria-hidden>
+                  <IconMusic size={13} />
+                </span>
+              )}
+              <span className={styles.playlistText}>
+                <span className={styles.playlistTitle}>{t.album || "Unknown Album"}</span>
+                <span className={styles.playlistArtist}>{t.artist || "Unknown Artist"}</span>
               </span>
-            )}
-            <span className={styles.playlistText}>
-              <span className={styles.playlistTitle}>{t.album}</span>
-              <span className={styles.playlistArtist}>{t.artist}</span>
-            </span>
-          </motion.button>
-        ))}
+            </motion.button>
+          );
+        })}
       </div>
     </GlassPanel>
   );

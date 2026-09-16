@@ -97,7 +97,8 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
   setEqGains: async (gains) => {
     const next = gains.slice(0, 10).map((g) => Math.max(-12, Math.min(12, g)));
     while (next.length < 10) next.push(0);
-    set({ eqGains: next });
+    set({ eqGains: next, lastEngageError: null });
+    useLibraryStore.setState({ error: null });
     if (get().webPath) {
       setEq(next);
       return;
@@ -107,13 +108,14 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
 
   setPreset: async (id) => {
     set({ preset: id, lastEngageError: null });
+    useLibraryStore.setState({ error: null });
     const lab = get();
     if (!labWantsWeb(lab)) {
       await get().syncPlaybackPath();
       return;
     }
     if (lab.webPath) {
-      // Already on web — just rewire wet chain
+      // Hot-swap DSP nodes in Web Audio graph instantly without reloading/restarting the track
       try {
         await updatePreset(id);
       } catch (e) {
@@ -122,12 +124,13 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
       }
       return;
     }
-    // Not on web yet — engage now (handles "selected preset before play")
+    // Seamlessly transfer native playback to Web Audio DSP at current timestamp
     await get().syncPlaybackPath();
   },
 
   setSpatial: async (on) => {
     set({ spatial: on, lastEngageError: null });
+    useLibraryStore.setState({ error: null });
     const lab = get();
     if (!labWantsWeb(lab)) {
       await get().syncPlaybackPath();
@@ -171,42 +174,46 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
     // Engage → web
     if (wantWeb && !lab.webPath) {
       if (!currentPath) {
-        // Keep preset selected; engage on next playTrack
         set({ webPath: false });
         return;
       }
       try {
         bindHandlers();
-        // Pause + mute native BEFORE starting web so no unprocessed blip
-        await api.pause();
+        const curPos = player.position || 0;
+        const curVol = player.volume;
+        const wasPlaying = player.playing;
+
+        // Mute native output immediately to avoid double-audio
         await muteNative(true);
-        const autoplay = player.playing;
+        await api.pause().catch(() => undefined);
+
         await engageWebAudio(
           currentPath,
-          player.position,
-          player.volume,
+          curPos,
+          curVol,
           lab.preset,
           lab.spatial,
           lab.orbitPeriod,
-          autoplay,
+          wasPlaying,
         );
-        // Re-apply EQ after engage (graph may be fresh).
+
         setEq(lab.eqGains);
         set({ webPath: true, lastEngageError: null });
+        useLibraryStore.setState({ error: null });
         usePlayerStore.setState({
-          playing: autoplay,
+          playing: wasPlaying,
           duration: webDuration() || player.duration,
+          position: curPos,
         });
       } catch (e) {
         const msg = String(e);
         console.error("Sound Lab engage failed", e);
         set({
           lastEngageError: msg,
-          // Do NOT wipe user's preset choice — just fail the audio path
           webPath: false,
         });
         useLibrarySetError(
-          `Sound Lab failed (native path kept). ${msg}. Try playing the track again.`,
+          `Sound Lab DSP failed: ${msg}. Clean native audio active.`,
         );
         try {
           await muteNative(false);
@@ -233,7 +240,8 @@ export const useSoundLabStore = create<SoundLabStore>((set, get) => ({
       } catch (e) {
         console.error("Sound Lab disengage failed", e);
       }
-      set({ webPath: false, spectrum: new Array(32).fill(0) });
+      set({ webPath: false, spectrum: new Array(32).fill(0), lastEngageError: null });
+      useLibraryStore.setState({ error: null });
       usePlayerStore.setState({ playing, position: pos });
     }
   },

@@ -29,8 +29,16 @@ export function ExploreView() {
     }
   };
 
-  // Distinct albums
-  const albums = Array.from(new Map(tracks.map((t) => [t.album, t])).values()).slice(0, 16);
+  // Distinct albums - find best representative track with cover if possible
+  const albums = Array.from(
+    tracks.reduce((acc, t) => {
+      const existing = acc.get(t.album);
+      if (!existing || (!existing.cover_data_url && t.cover_data_url)) {
+        acc.set(t.album, t);
+      }
+      return acc;
+    }, new Map<string, typeof tracks[0]>()).values()
+  ).slice(0, 16);
   const artists = new Set(tracks.map((t) => t.artist)).size;
   const totalSecs = tracks.reduce((acc, t) => acc + (t.duration_secs || 0), 0);
 

@@ -267,17 +267,19 @@ function startOrbit(c: Chain) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     c.theta += ((Math.PI * 2) / c.orbitPeriod) * dt;
-    const r = 1.4;
-    const x = r * Math.cos(c.theta);
-    const z = r * Math.sin(c.theta);
+    // Circular HRTF binaural orbit
+    const r = 1.6;
+    const x = r * Math.sin(c.theta);
+    const z = r * Math.cos(c.theta);
     const t = c.ctx.currentTime;
     const tau = 0.04;
     c.panner.positionX.setTargetAtTime(x, t, tau);
     c.panner.positionZ.setTargetAtTime(z, t, tau);
     c.panner.positionY.setTargetAtTime(0, t, tau);
+    // Head shadow effect: low-pass attenuation when sound source is behind head
     const behind = Math.max(0, -z) / r;
-    c.shadowLp.frequency.setTargetAtTime(18000 - behind * 11000, t, tau);
-    const g = Math.pow(10, (-2 * behind) / 20);
+    c.shadowLp.frequency.setTargetAtTime(18000 - behind * 12000, t, tau);
+    const g = Math.pow(10, (-2.5 * behind) / 20);
     c.pannerGain.gain.setTargetAtTime(g, t, tau);
     c.orbitRaf = requestAnimationFrame(tick);
   };
@@ -292,27 +294,30 @@ async function buildPreset(
   const t = ctx.currentTime;
   switch (id) {
     case "funk": {
+      // Warm analog console tape saturation + punchy low-mid dynamic EQ
       const shaper = ctx.createWaveShaper();
-      shaper.curve = softSaturationCurve(0.35);
-      shaper.oversample = "2x";
-      const bass = peaking(ctx, 120, 4, 1.1);
-      const air = highshelf(ctx, 10000, -6);
+      shaper.curve = softSaturationCurve(0.42);
+      shaper.oversample = "4x";
+      const punch = peaking(ctx, 110, 4.5, 1.2);
+      const clarity = peaking(ctx, 3200, 2.0, 0.8);
+      const air = highshelf(ctx, 11000, -3.5);
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -18;
-      comp.knee.value = 12;
-      comp.ratio.value = 3;
-      comp.attack.value = 0.01;
-      comp.release.value = 0.18;
+      comp.threshold.value = -16;
+      comp.knee.value = 10;
+      comp.ratio.value = 3.5;
+      comp.attack.value = 0.015;
+      comp.release.value = 0.15;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
       g.gain.linearRampToValueAtTime(1, t + RAMP);
-      const r = chainNodes([shaper, bass, air, comp]);
+      const r = chainNodes([shaper, punch, clarity, air, comp]);
       r.out.connect(g);
       return { in: r.in, out: g };
     }
     case "lofi": {
-      const hp = highpass(ctx, 40);
-      const lp = lowpass(ctx, 5000, 0.8);
+      // Retro vinyl warmth, mellow lowpass and analog flutter
+      const hp = highpass(ctx, 45);
+      const lp = lowpass(ctx, 4800, 0.85);
       await ensureWorklet(ctx);
       let crushOut: AudioNode = lp;
       try {
@@ -321,13 +326,13 @@ async function buildPreset(
           numberOfOutputs: 1,
           outputChannelCount: [2],
         });
-        w.parameters.get("bits")!.value = 8;
-        w.parameters.get("reduction")!.value = 4;
+        w.parameters.get("bits")!.value = 10;
+        w.parameters.get("reduction")!.value = 3;
         lp.connect(w);
         crushOut = w;
         c.workletNode = w;
       } catch {
-        /* LPF only */
+        /* LPF fallback */
       }
       const sum = ctx.createGain();
       crushOut.connect(sum);
@@ -336,7 +341,7 @@ async function buildPreset(
       noise.loop = true;
       const nG = ctx.createGain();
       nG.gain.setValueAtTime(0.0001, t);
-      nG.gain.linearRampToValueAtTime(0.05, t + RAMP);
+      nG.gain.linearRampToValueAtTime(0.035, t + RAMP);
       noise.connect(nG);
       nG.connect(sum);
       noise.start();
@@ -345,26 +350,28 @@ async function buildPreset(
       return { in: hp, out: sum };
     }
     case "bass": {
-      const boost = peaking(ctx, 80, 9, 0.9);
-      const boost2 = peaking(ctx, 55, 3, 1.2);
+      // Deep sub-bass resonance + tight punch without distortion
+      const sub = peaking(ctx, 55, 6.5, 1.3);
+      const midBass = peaking(ctx, 100, 5.0, 0.9);
       const lim = ctx.createDynamicsCompressor();
-      lim.threshold.value = -6;
-      lim.knee.value = 2;
-      lim.ratio.value = 12;
-      lim.attack.value = 0.003;
-      lim.release.value = 0.12;
-      return chainNodes([boost, boost2, lim]);
+      lim.threshold.value = -4;
+      lim.knee.value = 1;
+      lim.ratio.value = 16;
+      lim.attack.value = 0.002;
+      lim.release.value = 0.1;
+      return chainNodes([sub, midBass, lim]);
     }
     case "nightcore":
       return chainNodes([ctx.createGain()]);
     case "slowed": {
+      // Lush cinematic slow reverb (tape rate drop + rich spatial convolution)
       const dry = ctx.createGain();
-      dry.gain.value = 0.75;
+      dry.gain.value = 0.70;
       const wet = ctx.createGain();
       wet.gain.setValueAtTime(0.0001, t);
-      wet.gain.linearRampToValueAtTime(0.25, t + RAMP);
+      wet.gain.linearRampToValueAtTime(0.35, t + RAMP);
       const conv = ctx.createConvolver();
-      conv.buffer = makeHallIr(ctx, 2.4);
+      conv.buffer = makeHallIr(ctx, 3.2);
       const sum = ctx.createGain();
       dry.connect(sum);
       conv.connect(wet);
@@ -375,25 +382,27 @@ async function buildPreset(
       return { in: split, out: sum };
     }
     case "vocal": {
-      const presence = peaking(ctx, 2200, 5, 1.0);
-      const mud = peaking(ctx, 180, -4, 0.9);
-      const hp = highpass(ctx, 90);
+      // Studio broadcast vocal EQ: high-pass rumble filter + presence lift + smooth optical leveling
+      const presence = peaking(ctx, 2400, 4.5, 1.1);
+      const air = highshelf(ctx, 9000, 2.0);
+      const hp = highpass(ctx, 85);
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -28;
-      comp.knee.value = 16;
-      comp.ratio.value = 4;
-      comp.attack.value = 0.008;
-      comp.release.value = 0.2;
-      return chainNodes([hp, mud, presence, comp]);
+      comp.threshold.value = -22;
+      comp.knee.value = 14;
+      comp.ratio.value = 4.0;
+      comp.attack.value = 0.005;
+      comp.release.value = 0.18;
+      return chainNodes([hp, presence, air, comp]);
     }
     case "hall": {
+      // 3D Spatial Concert Hall acoustic impulse response
       const dry = ctx.createGain();
-      dry.gain.value = 0.72;
+      dry.gain.value = 0.68;
       const wet = ctx.createGain();
       wet.gain.setValueAtTime(0.0001, t);
-      wet.gain.linearRampToValueAtTime(0.28, t + RAMP);
+      wet.gain.linearRampToValueAtTime(0.32, t + RAMP);
       const conv = ctx.createConvolver();
-      conv.buffer = makeHallIr(ctx, 2.8);
+      conv.buffer = makeHallIr(ctx, 3.6);
       const sum = ctx.createGain();
       dry.connect(sum);
       conv.connect(wet);
@@ -404,20 +413,21 @@ async function buildPreset(
       return { in: split, out: sum };
     }
     case "night": {
+      // Studio mastering multiband limiter for clear nighttime listening
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -36;
-      comp.knee.value = 20;
-      comp.ratio.value = 8;
-      comp.attack.value = 0.01;
-      comp.release.value = 0.25;
+      comp.threshold.value = -30;
+      comp.knee.value = 18;
+      comp.ratio.value = 6;
+      comp.attack.value = 0.008;
+      comp.release.value = 0.2;
       const makeup = ctx.createGain();
-      makeup.gain.value = 1.35;
+      makeup.gain.value = 1.25;
       const lim = ctx.createDynamicsCompressor();
-      lim.threshold.value = -3;
+      lim.threshold.value = -2;
       lim.knee.value = 0;
       lim.ratio.value = 20;
-      lim.attack.value = 0.002;
-      lim.release.value = 0.08;
+      lim.attack.value = 0.001;
+      lim.release.value = 0.05;
       return chainNodes([comp, makeup, lim]);
     }
   }
@@ -622,7 +632,16 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
+function cleanPath(p: string): string {
+  let s = p.trim().replace(/^["']|["']$/g, "");
+  if (s.startsWith("\\\\?\\")) {
+    s = s.slice(4);
+  }
+  return s;
+}
+
+async function fetchArrayBuffer(rawPath: string): Promise<ArrayBuffer> {
+  const path = cleanPath(rawPath);
   // 1) asset protocol via fetch
   try {
     const url = convertFileSrc(path);
@@ -634,7 +653,7 @@ async function fetchArrayBuffer(path: string): Promise<ArrayBuffer> {
   } catch (e) {
     console.warn("[SoundLab] convertFileSrc fetch failed", e);
   }
-  // 2) IPC base64
+  // 2) IPC base64 fallback
   const b64 = await invoke<string>("read_audio_b64", { path });
   return base64ToArrayBuffer(b64);
 }

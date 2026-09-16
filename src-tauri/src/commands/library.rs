@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::library::color_extract::{extract_palette, hex_to_rgb, pick_accent};
 use crate::library::scanner::{read_track, scan_folder, watch_folder, TrackMeta};
 
+use super::playback::normalize_audio_path;
 use super::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -104,7 +106,7 @@ pub fn set_music_root(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Vec<TrackMeta>, String> {
-    let root = std::path::PathBuf::from(&path);
+    let root = normalize_audio_path(&path);
     if !root.exists() {
         return Err(format!("folder does not exist: {}", root.display()));
     }
@@ -122,9 +124,10 @@ pub fn get_music_root(state: State<'_, AppState>) -> String {
 
 #[tauri::command]
 pub fn refresh_track(path: String, state: State<'_, AppState>) -> Option<TrackMeta> {
-    let meta = read_track(std::path::Path::new(&path)).ok()?;
+    let clean = normalize_audio_path(&path);
+    let meta = read_track(&clean).ok()?;
     let mut lib = state.library.lock();
-    if let Some(existing) = lib.iter_mut().find(|t| t.path == meta.path) {
+    if let Some(existing) = lib.iter_mut().find(|t| t.path == meta.path || t.path == path) {
         *existing = meta.clone();
     } else {
         lib.push(meta.clone());
@@ -134,8 +137,10 @@ pub fn refresh_track(path: String, state: State<'_, AppState>) -> Option<TrackMe
 
 #[tauri::command]
 pub fn get_color_palette(path: String, state: State<'_, AppState>) -> Result<ColorPalette, String> {
+    let clean = normalize_audio_path(&path);
+    let clean_str = clean.to_string_lossy();
     // Prefer the cached library entry (avoid re-decoding the file).
-    if let Some(meta) = state.library.lock().iter().find(|t| t.path == path) {
+    if let Some(meta) = state.library.lock().iter().find(|t| t.path == path || t.path == clean_str) {
         let rgb = hex_to_rgb(&meta.accent).unwrap_or([124, 156, 255]);
         return Ok(ColorPalette {
             accent: meta.accent.clone(),
@@ -143,7 +148,7 @@ pub fn get_color_palette(path: String, state: State<'_, AppState>) -> Result<Col
             palette: meta.palette.clone(),
         });
     }
-    let meta = read_track(std::path::Path::new(&path)).map_err(|e| e.to_string())?;
+    let meta = read_track(&clean).map_err(|e| e.to_string())?;
     let rgb = hex_to_rgb(&meta.accent).unwrap_or([124, 156, 255]);
     Ok(ColorPalette {
         accent: meta.accent.clone(),

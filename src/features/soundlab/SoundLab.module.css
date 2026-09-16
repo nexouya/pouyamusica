@@ -1,51 +1,57 @@
 .view {
-  padding: 20px 24px 32px;
+  padding: 24px 32px 40px;
   min-height: 100%;
 }
 
 .header {
-  margin-bottom: 22px;
+  margin-bottom: 26px;
 }
 
 .eyebrow {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: var(--text-nav);
-  font-weight: 500;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
 .title {
   margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-solid);
 }
 
 .sub {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-  max-width: 560px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  max-width: 600px;
 }
 
 .headphoneHint {
-  margin-top: 10px;
+  margin-top: 14px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 8px 16px;
   border-radius: var(--radius-pill);
   font-size: 12.5px;
-  color: var(--text-primary);
-  background: rgba(var(--accent-dynamic-rgb), 0.12);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.28);
+  font-weight: 500;
+  color: var(--text-solid);
+  background: rgba(var(--accent-dynamic-rgb), 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .engineStatus {
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   font-size: 12px;
   font-family: var(--font-mono);
   color: var(--text-tertiary);
@@ -56,8 +62,8 @@
 }
 
 .errorLine {
-  margin: 8px 0 0;
-  font-size: 12px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
   color: var(--danger-soft);
   line-height: 1.4;
   max-width: 640px;
@@ -66,37 +72,41 @@
 
 /* Spectrum proof strip */
 .spectrumWrap {
-  margin: 18px 0 8px;
+  margin: 16px 0 12px;
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 48px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--glass-base);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  height: 52px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
 .spectrumBar {
   flex: 1;
   min-width: 2px;
   border-radius: 999px;
-  background: rgba(var(--accent-dynamic-rgb), 0.85);
-  box-shadow: 0 0 8px rgba(var(--accent-dynamic-rgb), 0.25);
-  transition: height 80ms linear;
-  min-height: 2px;
+  background: rgba(var(--accent-dynamic-rgb), 0.9);
+  box-shadow: 0 0 12px rgba(var(--accent-dynamic-rgb), 0.35);
+  transition: height 60ms cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 3px;
 }
 
 .spectrumIdle {
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 11.5px;
   letter-spacing: 0.04em;
 }
 
 .sectionLabel {
-  margin: 24px 0 12px;
+  margin: 28px 0 14px;
   font-size: var(--text-nav);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-tertiary);
@@ -107,73 +117,61 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
 }
 
 .card {
   position: relative;
   text-align: left;
-  padding: 16px 14px 14px;
-  border-radius: 18px;
-  min-height: 128px;
+  padding: 18px 16px 16px;
+  border-radius: 20px;
+  min-height: 136px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   color: var(--text-secondary);
-  background: var(--glass-base);
+  background: rgba(255, 255, 255, 0.035);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.2);
-  transition:
-    color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms var(--ease-out);
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 10px 28px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
   cursor: pointer;
 }
 
 .card:hover {
   color: var(--text-primary);
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.015);
+  background: rgba(255, 255, 255, 0.065);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
     inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 12px 32px rgba(0, 0, 0, 0.28),
-    0 0 28px rgba(var(--accent-dynamic-rgb), 0.12);
+    0 16px 36px rgba(0, 0, 0, 0.35),
+    0 0 24px rgba(var(--accent-dynamic-rgb), 0.15);
 }
 
 .cardActive {
   color: var(--text-solid);
+  transform: translateY(-2px);
+  background: linear-gradient(
+    145deg,
+    rgba(var(--accent-dynamic-rgb), 0.22) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
-    inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.45),
-    0 10px 28px rgba(0, 0, 0, 0.3),
-    0 0 36px rgba(var(--accent-dynamic-rgb), 0.28);
-  background: linear-gradient(
-    155deg,
-    rgba(var(--accent-dynamic-rgb), 0.18) 0%,
-    rgba(255, 255, 255, 0.06) 60%
-  );
-}
-
-.cardActive::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    120deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.06) 50%,
-    transparent 70%
-  );
+    inset 0 0 0 1.5px rgba(var(--accent-dynamic-rgb), 0.6),
+    0 14px 36px rgba(0, 0, 0, 0.4),
+    0 0 32px rgba(var(--accent-dynamic-rgb), 0.28);
 }
 
 .cardIcon {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
@@ -181,18 +179,19 @@
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: all 180ms ease;
 }
 
 .cardActive .cardIcon {
   color: var(--text-solid);
-  background: rgba(var(--accent-dynamic-rgb), 0.35);
+  background: rgba(var(--accent-dynamic-rgb), 0.4);
   box-shadow:
-    inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.5),
-    0 0 16px rgba(var(--accent-dynamic-rgb), 0.35);
+    inset 0 0 0 1px rgba(var(--accent-dynamic-rgb), 0.6),
+    0 0 18px rgba(var(--accent-dynamic-rgb), 0.4);
 }
 
 .cardName {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: inherit;
@@ -209,7 +208,7 @@
 
 .cardDetail {
   margin-top: auto;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -217,21 +216,23 @@
 
 /* Spatial block */
 .spatial {
-  padding: 18px;
-  border-radius: 20px;
-  background: var(--glass-base);
+  padding: 22px 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.035);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
-    0 10px 28px rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 14px 36px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .spatialHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
@@ -239,49 +240,51 @@
 .spatialTitleRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .spatialTitle {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  color: var(--text-solid);
 }
 
 .spatialDesc {
   margin: 4px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.45;
-  max-width: 480px;
+  max-width: 520px;
 }
 
 .toggle {
-  width: 48px;
-  height: 28px;
+  width: 50px;
+  height: 30px;
   flex-shrink: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   padding: 3px;
   position: relative;
   border: none;
   cursor: pointer;
-  transition: background 180ms ease;
+  transition: background 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toggleOn {
   background: rgba(var(--accent-dynamic-rgb), 0.95);
+  box-shadow: 0 0 16px rgba(var(--accent-dynamic-rgb), 0.45);
 }
 
 .toggleKnob {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: var(--text-solid);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   transform: translateX(0);
-  transition: transform 180ms var(--ease-out);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toggleOn .toggleKnob {
@@ -291,11 +294,12 @@
 .orbitRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  padding-top: 4px;
 }
 
 .orbitLabel {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-secondary);
   min-width: 88px;
 }
@@ -309,45 +313,28 @@
   background: rgba(255, 255, 255, 0.12);
   outline: none;
   cursor: pointer;
-  max-width: 280px;
+  max-width: 320px;
 }
 
 .orbitSlider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: var(--text-solid);
+  background: #ffffff;
   box-shadow:
-    0 0 0 3px rgba(var(--accent-dynamic-rgb), 0.35),
+    0 0 0 3px rgba(var(--accent-dynamic-rgb), 0.4),
     0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 120ms ease;
+}
+
+.orbitSlider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
 }
 
 .orbitValue {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-primary);
-  min-width: 42px;
-  text-align: right;
-}
-
-@media (max-width: 1180px) {
-  .view {
-    padding: 16px;
-  }
-  .grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .card,
-  .card:hover {
-    transform: none;
-    transition: none;
-  }
-  .spectrumBar {
-    transition: none;
-  }
+  color: var(--text-tertiary);
 }

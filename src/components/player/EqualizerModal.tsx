@@ -124,33 +124,12 @@ export function EqualizerModal({ open, onClose }: Props) {
             </div>
 
             <div className={styles.eqArea}>
-              <div className={styles.sliderCol}>
-                <span className={styles.sliderVal}>
-                  {eqGains[0] > 0 ? `+${eqGains[0]}` : eqGains[0]}dB
-                </span>
-                <div className={styles.sliderTrack}>
-                  <input
-                    type="range"
-                    min={-12}
-                    max={12}
-                    step={0.5}
-                    value={eqGains[0] ?? 0}
-                    onChange={(e) => setBand(0, parseFloat(e.target.value))}
-                    className={styles.vSlider}
-                    aria-label={FREQUENCIES[0]}
-                  />
-                </div>
-                <span className={styles.sliderFreq}>Pre</span>
-              </div>
-
-              <div className={styles.divider} />
-
               {FREQUENCIES.map((freq, idx) => {
                 const val = eqGains[idx] ?? 0;
                 return (
                   <div key={freq} className={styles.sliderCol}>
                     <span className={styles.sliderVal}>
-                      {val > 0 ? `+${val}` : val}dB
+                      {val > 0 ? `+${val.toFixed(1)}` : val.toFixed(1)}dB
                     </span>
                     <div className={styles.sliderTrack}>
                       <input

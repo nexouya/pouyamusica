@@ -1,34 +1,34 @@
-/* Full-width bottom transport bar — matches app chrome (no floating capsule) */
+/* Full-width bottom transport bar — Liquid Glass with specular edge & deep ambient bounce */
 .bar {
   flex-shrink: 0;
   height: var(--player-height);
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 18px;
+  padding: 0 20px;
   background:
     linear-gradient(
       180deg,
-      rgba(20, 24, 34, 0.55) 0%,
-      rgba(10, 12, 18, 0.92) 100%
+      rgba(24, 28, 40, 0.65) 0%,
+      rgba(10, 13, 19, 0.94) 100%
     );
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(44px) saturate(200%);
-  -webkit-backdrop-filter: blur(44px) saturate(200%);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(48px) saturate(210%);
+  -webkit-backdrop-filter: blur(48px) saturate(210%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 -16px 48px rgba(0, 0, 0, 0.35),
-    0 -2px 28px rgba(var(--accent-dynamic-rgb), 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 -18px 48px rgba(0, 0, 0, 0.45),
+    0 -2px 32px rgba(var(--accent-dynamic-rgb), 0.1);
   position: relative;
   z-index: 40;
-  transition: box-shadow 320ms ease;
+  transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .bar[data-playing="true"] {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 -16px 48px rgba(0, 0, 0, 0.4),
-    0 -2px 36px rgba(var(--accent-dynamic-rgb), 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 -20px 56px rgba(0, 0, 0, 0.5),
+    0 -2px 40px rgba(var(--accent-dynamic-rgb), 0.22);
 }
 
 .bar::before {
@@ -39,7 +39,7 @@
   background: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(var(--accent-dynamic-rgb), 0.08) 50%,
+    rgba(var(--accent-dynamic-rgb), 0.09) 50%,
     transparent 70%
   );
   background-size: 200% 100%;
@@ -64,7 +64,7 @@
 
 /* — left — */
 .left {
-  width: 240px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -76,25 +76,26 @@
 
 .artBtn {
   position: relative;
-  width: 52px;
-  height: 52px;
+  width: 50px;
+  height: 50px;
   flex-shrink: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: visible;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
     0 8px 24px rgba(0, 0, 0, 0.4),
-    0 0 20px rgba(var(--accent-dynamic-rgb), 0.18);
+    0 0 20px rgba(var(--accent-dynamic-rgb), 0.16);
   padding: 0;
   border: none;
-  transition: transform 180ms var(--ease-out), box-shadow 180ms ease;
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 180ms ease;
 }
 
 .artBtn:hover {
   transform: scale(1.04);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
     0 10px 28px rgba(0, 0, 0, 0.45),
     0 0 28px rgba(var(--accent-dynamic-rgb), 0.28);
 }
@@ -104,7 +105,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .artEmpty {
@@ -113,7 +114,7 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  border-radius: 10px;
+  border-radius: 12px;
   background: linear-gradient(
     135deg,
     rgba(var(--accent-dynamic-rgb), 0.25) 0%,
@@ -125,6 +126,9 @@
 .meta {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .titleRow {
@@ -163,9 +167,9 @@
 }
 
 .title {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-solid);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -174,24 +178,19 @@
 }
 
 .artist {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.3;
-  margin-top: 1px;
-  padding-left: 15px;
-}
-
-.artBtn {
-  position: relative;
+  margin-top: 2px;
 }
 
 .artRing {
   position: absolute;
   inset: -3px;
-  border-radius: 13px;
+  border-radius: 15px;
   border: 1.5px solid rgba(var(--accent-dynamic-rgb), 0.75);
   box-shadow:
     0 0 18px rgba(var(--accent-dynamic-rgb), 0.45),
@@ -231,15 +230,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 34px;
+  min-height: 34px;
   border-radius: 10px;
   background: none;
   border: none;
+  cursor: pointer;
+  transition: all 150ms ease;
 }
 
 .heart:hover {
-  color: var(--text-primary);
+  color: var(--text-solid);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .heartOn {
@@ -255,7 +257,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  max-width: 560px;
+  max-width: 580px;
   margin: 0 auto;
   position: relative;
   z-index: 1;
@@ -264,7 +266,7 @@
 .transport {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   height: 40px;
 }
 
@@ -279,6 +281,8 @@
   background: transparent;
   border: none;
   padding: 0;
+  cursor: pointer;
+  transition: all 140ms ease;
 }
 
 .ctrlSm {
@@ -287,8 +291,8 @@
 }
 
 .ctrl:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-solid);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .ctrlActive {
@@ -304,25 +308,22 @@
   align-items: center;
   justify-content: center;
   color: var(--on-accent);
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(var(--accent-dynamic-rgb), 0.95) 100%
-  );
+  background: #ffffff;
   border: none;
   padding: 0;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 6px 20px rgba(var(--accent-dynamic-rgb), 0.4),
     0 2px 8px rgba(0, 0, 0, 0.35);
-  transition: transform 160ms var(--ease-out), box-shadow 160ms ease;
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms ease;
 }
 
 .play:hover {
   transform: scale(1.06);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 8px 28px rgba(var(--accent-dynamic-rgb), 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    0 8px 28px rgba(var(--accent-dynamic-rgb), 0.55),
     0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
@@ -335,42 +336,42 @@
 
 /* — right — */
 .right {
-  width: 250px;
+  width: 260px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 4px;
   position: relative;
   z-index: 1;
 }
 
 @media (max-width: 1180px) {
   .left {
-    width: 160px;
+    width: 180px;
   }
   .right {
-    width: 160px;
+    width: 180px;
   }
   .spectrum {
     display: none;
   }
   .center {
-    max-width: 420px;
+    max-width: 440px;
   }
 }
 
 @media (max-width: 1024px) {
   .left {
-    width: 120px;
+    width: 140px;
   }
   .right > :nth-child(n + 2) {
     display: none;
   }
   .right {
-    width: 56px;
+    width: 60px;
   }
   .center {
-    max-width: 320px;
+    max-width: 340px;
   }
 }

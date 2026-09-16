@@ -4,6 +4,7 @@ import { GlassButton } from "../glass/GlassPanel";
 import { IconMusic, IconPlay } from "../icons/Icons";
 import type { TrackMeta } from "../../types";
 import { usePlayerStore } from "../../stores/playerStore";
+import { useLibraryStore } from "../../stores/libraryStore";
 import { formatTime } from "../../lib/format";
 
 export function AlbumCard({
@@ -14,9 +15,21 @@ export function AlbumCard({
   featured?: boolean;
 }) {
   const playTrack = usePlayerStore((s) => s.playTrack);
-  const currentId = usePlayerStore((s) => s.current?.id);
+  const current = usePlayerStore((s) => s.current);
   const playing = usePlayerStore((s) => s.playing);
-  const active = currentId === track.id;
+  const libraryTracks = useLibraryStore((s) => s.tracks);
+
+  const albumTracks = libraryTracks.filter((t) => t.album === track.album);
+  const active = current?.album === track.album || current?.id === track.id;
+
+  const handlePlayAlbum = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (albumTracks.length > 0) {
+      void playTrack(albumTracks[0], albumTracks);
+    } else {
+      void playTrack(track);
+    }
+  };
 
   return (
     <motion.div
@@ -25,6 +38,8 @@ export function AlbumCard({
       whileHover={{ scale: 1.03, y: -3 }}
       whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 360, damping: 22 }}
+      onClick={handlePlayAlbum}
+      style={{ cursor: "pointer" }}
     >
       <div className={styles.coverWrap}>
         {track.cover_data_url ? (
@@ -43,11 +58,8 @@ export function AlbumCard({
         <div className={styles.playOverlay}>
           <GlassButton
             size={featured ? 48 : 40}
-            label="Play"
-            onClick={(e) => {
-              e.stopPropagation();
-              void playTrack(track);
-            }}
+            label="Play Album"
+            onClick={handlePlayAlbum}
           >
             <IconPlay size={featured ? 20 : 16} />
           </GlassButton>
@@ -59,15 +71,14 @@ export function AlbumCard({
         )}
       </div>
       <div className={styles.info}>
-        <div className={styles.title} title={track.title}>
-          {track.title}
+        <div className={styles.title} title={track.album || track.title}>
+          {track.album || track.title}
         </div>
         <div className={styles.artist}>{track.artist}</div>
-        {featured && (
-          <div className={`mono ${styles.metaRow}`}>
-            {track.album} · {formatTime(track.duration_secs)}
-          </div>
-        )}
+        <div className={`mono ${styles.metaRow}`}>
+          {albumTracks.length} {albumTracks.length === 1 ? "track" : "tracks"}
+          {featured && ` · ${formatTime(track.duration_secs)}`}
+        </div>
       </div>
     </motion.div>
   );

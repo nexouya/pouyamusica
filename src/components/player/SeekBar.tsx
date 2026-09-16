@@ -145,7 +145,7 @@ export function SeekBar({ compact = false }: Props) {
           <div
             className={styles.rail}
             style={{
-              transform: `scaleX(${progress})`,
+              width: `${progress * 100}%`,
               background: `rgba(${accentRgb}, 1)`,
             }}
           />

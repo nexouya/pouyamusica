@@ -1,6 +1,6 @@
 [package]
 name = "pouya-music"
-version = "0.1.0"
+version = "1.0.1"
 description = "pouya music — Liquid Glass music player"
 authors = ["pouya studio"]
 edition = "2021"
